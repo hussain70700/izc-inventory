@@ -201,24 +201,36 @@ class _DashboardScreenState extends State<DashboardScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
       decoration: const BoxDecoration(
         color: Colors.white,
-        border: Border(bottom: BorderSide(color: Color(0xFFEEEEEE), width: 1)),
+        border: Border(bottom: BorderSide(color: Color(0xFFEEEEEE), width: 2)),
       ),
-      child: Row(
-        children: [
-          if (!isNarrow) const Text("Welcome back, Mr.xyz", style: TextStyle(fontSize: 16)),
-          const Spacer(),
-          const Icon(Icons.notifications_none, color: Colors.grey),
-          const SizedBox(width: 16),
-          const Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text("Mr.xyz", style: TextStyle(fontWeight: FontWeight.bold)),
-              Text("Logistic manager", style: TextStyle(fontSize: 12, color: Colors.grey)),
-            ],
-          ),
-          const SizedBox(width: 8),
-          const CircleAvatar(radius: 16, backgroundColor: Colors.grey),
-        ],
+      child: IntrinsicHeight(
+        child: Row(
+          children: [
+            if (!isNarrow) Row(
+              children: [
+                const Text("Welcome back", style: TextStyle(fontSize: 16)),
+                const Text(", Mr.xyz", style: TextStyle(fontSize: 16,fontWeight: FontWeight.bold)),
+              ],
+            ),
+            const Spacer(),
+            const Icon(Icons.notifications_none, color: Colors.grey),
+            const VerticalDivider( // Changed from Divider to VerticalDivider
+              thickness: 1,
+              color: Colors.grey,
+               // Space from the bottom edge of the Row's content
+              width: 32, // This adds 32 logical pixels of width, 1 of which is the divider itself
+            ),
+            const Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text("Mr.xyz", style: TextStyle(fontWeight: FontWeight.bold)),
+                Text("Logistic manager", style: TextStyle(fontSize: 12, color: Colors.grey)),
+              ],
+            ),
+            const SizedBox(width: 8),
+            IconButton(onPressed: (){}, icon: Icon(Icons.arrow_drop_down, color: Colors.grey))
+             ],
+        ),
       ),
     );
   }
