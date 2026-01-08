@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:izc_inventory/utils/dashboard_service.dart';
 import 'package:izc_inventory/widgets/dashboard/sidebar_widget.dart';
 import 'package:izc_inventory/widgets/dashboard/dashboard_cards.dart';
+import 'sales_page.dart'; // <--- NEW IMPORT
 
 // Assuming kTabletBreakpoint is defined somewhere, e.g.,
 // const double kTabletBreakpoint = 768.0;
@@ -17,7 +18,7 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   final DashboardService _service = DashboardService();
-  String _selectedItem = "Dashboard";
+  String _selectedItem = "Sales";
   DashboardData? _currentData;
   bool _isLoading = true;
   final GlobalKey _periodButtonKey = GlobalKey();
@@ -36,17 +37,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _selectedItem = itemName;
     });
 
-    try {
-      final data = await _service.fetchDataFor(itemName);
+    // Only fetch dashboard data if it's not the Sales page
+    if (itemName == "Dashboard") { // <--- Added condition
+      try {
+        final data = await _service.fetchDataFor(itemName);
+        setState(() {
+          _currentData = data;
+          _isLoading = false;
+        });
+      } catch (e) {
+        setState(() {
+          _isLoading = false;
+        });
+        print(e);
+      }
+    } else {
+      // For other pages like 'Sales', we just update the selected item
+      // and stop loading, as the page itself might handle its own data.
       setState(() {
-        _currentData = data;
         _isLoading = false;
+        _currentData = null; // Clear dashboard data when not on dashboard
       });
-    } catch (e) {
-      setState(() {
-        _isLoading = false;
-      });
-      print(e);
     }
   }
 
@@ -60,6 +71,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       builder: (context, constraints) {
         final isWide = constraints.maxWidth >= kTabletBreakpoint;
         return Scaffold(
+          backgroundColor: Color(0xfff5f6f8),
           appBar: isWide ? null
               : AppBar(
             title: Text(_selectedItem, style: const TextStyle(color: Colors.white)),
@@ -76,16 +88,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               Expanded(
                 flex: 10,
-                child: _isLoading
+                child: _selectedItem == "Sales" // <--- NEW: Conditional rendering for SalesPage
+                    ? const SalesScreen() // <--- Display SalesPage if "Sales" is selected
+                    : _isLoading
                     ? const Center(child: CircularProgressIndicator())
-                    : _currentData == null
+                    : _currentData == null && _selectedItem == "Dashboard"
                     ? const Center(child: Text("Failed to load data."))
-                    : Column( // <<--- NEW: Column to hold sticky header and scrollable content
+                    : Column( // Column to hold sticky header and scrollable content
                   children: [
-                    _buildHeader(), // <<--- STICKY HEADER
-                    Expanded( // <<--- Expanded to make SingleChildScrollView take remaining space
+                    _buildHeader(), // STICKY HEADER
+                    Expanded( // Expanded to make SingleChildScrollView take remaining space
                       child: SingleChildScrollView(
-                        child: _buildScrollableMainContent(), // <<--- Renamed method for clarity
+                        child: _buildScrollableMainContent(), // Renamed method for clarity
                       ),
                     ),
                   ],
@@ -173,7 +187,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     Column( // Group Sales Overview and Financial for narrow
                       children: [
                         _buildSectionHeader(icon: Icons.monetization_on_outlined, title: "Sales Overview"),
-                        const SizedBox(height: 16),
+                        // REMOVED: const SizedBox(height: 16), // <--- REMOVED THIS LINE
                         _buildResponsiveSalesCards(),
                         const SizedBox(height: 32),
                         _buildFinancialSection(),
@@ -191,7 +205,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     Expanded(flex: 2, child: Column( // This column holds Sales Overview and Financial Overview
                       children: [
                         _buildSectionHeader(icon: Icons.monetization_on_outlined, title: "Sales Overview"),
-                        const SizedBox(height: 16),
+                        // REMOVED: const SizedBox(height: 16), // <--- REMOVED THIS LINE
                         _buildResponsiveSalesCards(),
                         const SizedBox(height: 32,), // Space between sales cards and financial section
                         _buildFinancialSection(),
@@ -265,7 +279,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       icon: const Icon(Icons.calendar_month, color: Colors.white), // Calendar icon
       label: Text(_selectedPeriod, style: const TextStyle(color: Colors.white, fontSize: 13)),
       style: ElevatedButton.styleFrom(
-        backgroundColor: Colors.orange,
+        backgroundColor: Color(0xffFE691E),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(8),
@@ -317,8 +331,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         // TODO: Implement export logic
         print("Exporting report for $_selectedPeriod");
       },
-      icon: const Icon(Icons.download, color: Colors.orange), // Changed icon color to orange
-      label: const Text("Export Report", style: TextStyle(color: Colors.orange, fontSize: 13)), // Changed text color to orange
+      icon: const Icon(Icons.download, color: Color(0xffFE691E)), // Changed icon color to orange
+      label: const Text("Export Report", style: TextStyle(color: Color(0xffFE691E), fontSize: 13)), // Changed text color to orange
       style: ElevatedButton.styleFrom(
         backgroundColor: Colors.white, // Changed background to white
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -460,6 +474,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     return Container(
       padding: const EdgeInsets.all(16),
+      width: 800,
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
       child: Column(
         children: [
@@ -467,7 +482,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text("Recent Transactions", style: TextStyle(fontWeight: FontWeight.bold)),
-              TextButton(onPressed: () {}, child: const Text("View All", style: TextStyle(color: Colors.orange))),
+              TextButton(onPressed: () {}, child: const Text("View All", style: TextStyle(color: Color(0xffFE691E)))),
             ],
           ),
           const Divider(),

@@ -55,13 +55,13 @@ class SidebarWidget extends StatelessWidget {
               ],
             ),
           ),
-
-          _sidebarItem(Icons.home_outlined, "Home"),
+SizedBox(height: 20),
           _sidebarItem(Icons.dashboard, "Dashboard"),
+          _sidebarItem(Icons.home_outlined, 'Sales'),
           _sidebarItem(Icons.analytics_outlined, "Reports"),
           _sidebarItem(Icons.location_on_outlined, "Tracking"),
           _sidebarItem(Icons.people_alt_outlined, "Customers"),
-          _sidebarItem(Icons.settings_outlined, "Settings"),
+          _sidebarItem(Icons.inventory_outlined, "Inventory"),
           const Spacer(),
           const Divider(),
           Container(
@@ -94,12 +94,12 @@ class SidebarWidget extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 12),
       decoration: BoxDecoration(
-        color: isSelected ? Colors.orange.withOpacity(0.1) : Colors.transparent,
+        color: isSelected ? Color(0xffFE691E).withOpacity(0.1) : Colors.transparent,
         borderRadius: BorderRadius.circular(8),
       ),
       child: ListTile(
-        leading: Icon(icon, color: isSelected ? Colors.orange : Colors.grey),
-        title: Text(label, style: TextStyle(color: isSelected ? Colors.orange : Colors.grey.shade600, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
+        leading: Icon(icon, color: isSelected ? Color(0xffFE691E) : Colors.grey),
+        title: Text(label, style: TextStyle(color: isSelected ? Color(0xffFE691E) : Colors.grey.shade600, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
         onTap: () => onSelectItem(label),
       ),
     );
