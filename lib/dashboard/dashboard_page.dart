@@ -46,99 +46,129 @@ class _DashboardPageState extends State<DashboardPage> {
       return const Center(child: Text("Failed to load dashboard data."));
     }
 
-    // This is the scrollable content that was previously in Dashboard_main.dart
-    return SingleChildScrollView(
-      child: _buildScrollableMainContent(),
-    );
+    // Use a LayoutBuilder at the top level to pass constraints down.
+    return LayoutBuilder(builder: (context, constraints) {
+      return SingleChildScrollView(
+        child: _buildScrollableMainContent(constraints),
+      );
+    });
   }
 
-  // All the helper methods that build the UI for THIS page are now here.
-  // ... (_buildScrollableMainContent, _buildPeriodSelectionButton, _buildFinancialSection, etc.)
-
-  /// Builds the scrollable main content area of the dashboard (everything below the sticky header).
-  Widget _buildScrollableMainContent() {
-    const double kTabletBreakpoint = 768.0;
+  /// Builds the scrollable main content area of the dashboard.
+  /// It now accepts BoxConstraints to make decisions based on width.
+  Widget _buildScrollableMainContent(BoxConstraints constraints) {
+    // Determine if the screen is narrow.
+    final bool isNarrow = constraints.maxWidth < 700;
+    // Define dynamic padding based on screen width.
+    final double horizontalPadding = isNarrow ? 16.0 : 24.0;
 
     return Padding(
-      padding: const EdgeInsets.all(24.0),
+      padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 24.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Flexible(
-                flex: 2,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const [
-                    Text(
-                      "Dashboard Overview",
-                      style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                    ),
-                    Text(
-                      "Track your shipments and performance metrics in real time.",
-                      style: TextStyle(color: Colors.grey),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 16),
-              Flexible(
-                flex: 3,
-                child: Wrap(
-                  spacing: 12.0,
-                  runSpacing: 12.0,
-                  alignment: WrapAlignment.end,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    _buildPeriodSelectionButton(),
-                    _buildExportButton(),
-                  ],
-                ),
-              ),
-            ],
-          ),
+          // The top header row with title and buttons.
+          _buildResponsiveHeader(isNarrow),
           const SizedBox(height: 24),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              if (constraints.maxWidth < 700) {
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Column(
-                      children: [
-                        _buildSectionHeader(icon: Icons.monetization_on_outlined, title: "Sales Overview"),
-                        _buildResponsiveSalesCards(),
-                        const SizedBox(height: 32),
-                        _buildFinancialSection(),
-                      ],
-                    ),
-                    const SizedBox(height: 24),
-                    _buildPerformanceSection(),
-                  ],
-                );
-              } else {
-                return Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(flex: 2, child: Column(
-                      children: [
-                        _buildSectionHeader(icon: Icons.monetization_on_outlined, title: "Sales Overview"),
-                        _buildResponsiveSalesCards(),
-                        const SizedBox(height: 32,),
-                        _buildFinancialSection(),
-                      ],
-                    )),
-                    Expanded(flex: 1, child: _buildPerformanceSection()),
-                  ],
-                );
-              }
-            },
-          ),
+          // The main content area that switches between Row and Column.
+          _buildResponsiveBody(isNarrow),
         ],
       ),
+    );
+  }
+
+  /// Builds the top header row with "Dashboard Overview" and action buttons.
+  Widget _buildResponsiveHeader(bool isNarrow) {
+    // Use a Column for the header on narrow screens, a Row on wider screens.
+    return isNarrow
+        ? Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildOverviewText(isNarrow),
+        const SizedBox(height: 16),
+        _buildActionButtons(),
+      ],
+    )
+        : Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(flex: 2, child: _buildOverviewText(isNarrow)),
+        const SizedBox(width: 16),
+        Expanded(flex: 3, child: _buildActionButtons()),
+      ],
+    );
+  }
+
+  /// Builds the main content body (Sales, Financial, Performance).
+  Widget _buildResponsiveBody(bool isNarrow) {
+    // This is similar to your original LayoutBuilder logic.
+    if (isNarrow) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _buildSectionHeader(icon: Icons.monetization_on_outlined, title: "Sales Overview"),
+          const SizedBox(height: 16),
+          _buildResponsiveSalesCards(isNarrow),
+          const SizedBox(height: 32),
+          _buildFinancialSection(isNarrow),
+          const SizedBox(height: 24),
+          _buildPerformanceSection(isNarrow),
+        ],
+      );
+    } else {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+              flex: 2,
+              child: Column(
+                children: [
+                  _buildSectionHeader(icon: Icons.monetization_on_outlined, title: "Sales Overview"),
+                  const SizedBox(height: 16),
+                  _buildResponsiveSalesCards(isNarrow),
+                  const SizedBox(height: 32),
+                  _buildFinancialSection(isNarrow),
+                ],
+              )),
+          const SizedBox(width: 24), // Add spacing between the two columns
+          Expanded(flex: 1, child: _buildPerformanceSection(isNarrow)),
+        ],
+      );
+    }
+  }
+
+  /// Builds the "Dashboard Overview" title and subtitle with dynamic font size.
+  Widget _buildOverviewText(bool isNarrow) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          "Dashboard Overview",
+          style: TextStyle(fontSize: isNarrow ? 20 : 24, fontWeight: FontWeight.bold),
+        ),
+        if (!isNarrow) // Only show subtitle on wider screens to save space
+          const Padding(
+            padding: EdgeInsets.only(top: 4.0),
+            child: Text(
+              "Track your shipments and performance metrics in real time.",
+              style: TextStyle(color: Colors.grey),
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// Builds the period selection and export buttons.
+  Widget _buildActionButtons() {
+    return Wrap(
+      spacing: 12.0,
+      runSpacing: 12.0,
+      alignment: WrapAlignment.end,
+      children: [
+        _buildPeriodSelectionButton(),
+        _buildExportButton(),
+      ],
     );
   }
 
@@ -146,7 +176,7 @@ class _DashboardPageState extends State<DashboardPage> {
     return ElevatedButton.icon(
       key: _periodButtonKey,
       onPressed: () => _showPeriodPopupMenu(),
-      icon: const Icon(Icons.calendar_month, color: Colors.white),
+      icon: const Icon(Icons.calendar_month, color: Colors.white, size: 18),
       label: Text(_selectedPeriod, style: const TextStyle(color: Colors.white, fontSize: 13)),
       style: ElevatedButton.styleFrom(
         backgroundColor: Color(0xffFE691E),
@@ -186,7 +216,7 @@ class _DashboardPageState extends State<DashboardPage> {
   Widget _buildExportButton() {
     return ElevatedButton.icon(
       onPressed: () => print("Exporting report for $_selectedPeriod"),
-      icon: const Icon(Icons.download, color: Color(0xffFE691E)),
+      icon: const Icon(Icons.download, color: Color(0xffFE691E), size: 18),
       label: const Text("Export Report", style: TextStyle(color: Color(0xffFE691E), fontSize: 13)),
       style: ElevatedButton.styleFrom(
         backgroundColor: Colors.white,
@@ -206,31 +236,78 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  Widget _buildResponsiveSalesCards() {
-    return Wrap(
-      spacing: 12.0,
-      runSpacing: 12.0,
+  /// Makes the FinancialCard shrink by not having a fixed width.
+  // ... inside _DashboardPageState ...
+
+  /// MODIFIED: This now uses a Row with Flexible children to make cards shrink.
+  Widget _buildResponsiveSalesCards(bool isNarrow) {
+    // Using a Row with Flexible widgets ensures the cards stay on one line and shrink.
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        FinancialCard(width: 258, title: "Total Sales", amount: _currentData!.totalSales, color: Colors.blue, status: "All Channels"),
-        FinancialCard(width: 258, title: "Online Sales", amount: _currentData!.onlineSales, color: Colors.purple, status: "Website"),
-        FinancialCard(width: 258, title: "In-Store", amount: _currentData!.offlineSales, color: Colors.teal, status: "In-Store & Phone"),
+        Flexible(
+          child: FinancialCard(
+              title: "Total Sales",
+              amount: _currentData!.totalSales,
+              color: Colors.blue,
+              status: "All Channels"),
+        ),
+        const SizedBox(width: 12), // Spacing between cards
+        Flexible(
+          child: FinancialCard(
+              title: "Online Sales",
+              amount: _currentData!.onlineSales,
+              color: Colors.purple,
+              status: "Website"),
+        ),
+        const SizedBox(width: 12), // Spacing between cards
+        Flexible(
+          child: FinancialCard(
+              title: "In-Store",
+              amount: _currentData!.offlineSales,
+              color: Colors.teal,
+              status: "In-Store & Phone"),
+        ),
       ],
     );
   }
 
-  Widget _buildFinancialSection() {
+  /// MODIFIED: This also uses a Row with Flexible children.
+  Widget _buildFinancialSection(bool isNarrow) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildSectionHeader(icon: Icons.account_balance_wallet_outlined, title: "Financial Overview"),
+        _buildSectionHeader(
+            icon: Icons.account_balance_wallet_outlined,
+            title: "Financial Overview"),
         const SizedBox(height: 16),
-        Wrap(
-          spacing: 12.0,
-          runSpacing: 12.0,
+        // Applying the same Row + Flexible pattern here.
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            FinancialCard(width: 258, title: "Payment Processed", amount: _currentData!.paymentProcessed, color: Colors.green, status: "Verified & Cleared"),
-            FinancialCard(width: 258, title: "Online Payment", amount: _currentData!.paymentTransferred, color: Colors.blue, status: "Sent to Bank"),
-            FinancialCard(width: 258, title: "Cash Payment", amount: _currentData!.toBeTransferred, color: Colors.orange, status: "On the spot payments"),
+            Flexible(
+              child: FinancialCard(
+                  title: "Payment Processed",
+                  amount: _currentData!.paymentProcessed,
+                  color: Colors.green,
+                  status: "Verified & Cleared"),
+            ),
+            const SizedBox(width: 12),
+            Flexible(
+              child: FinancialCard(
+                  title: "Online Payment",
+                  amount: _currentData!.paymentTransferred,
+                  color: Colors.blue,
+                  status: "Sent to Bank"),
+            ),
+            const SizedBox(width: 12),
+            Flexible(
+              child: FinancialCard(
+                  title: "Cash Payment",
+                  amount: _currentData!.toBeTransferred,
+                  color: Colors.orange,
+                  status: "On the spot payments"),
+            ),
           ],
         ),
         const SizedBox(height: 24),
@@ -239,7 +316,10 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  Widget _buildPerformanceSection() {
+// ... all other methods in dashboard_page.dart remain unchanged ...
+
+
+  Widget _buildPerformanceSection(bool isNarrow) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -254,6 +334,7 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
+  /// Makes the DataTable horizontally scrollable on narrow screens.
   Widget _buildRecentTransactionsTable() {
     final List<Map<String, String>> transactions = [
       {'billNo': 'BN001', 'type': 'online', 'id': '#12345', 'name': 'John Doe', 'date': '10/10/2023', 'amount': '\$500', 'status': 'Completed'},
@@ -274,13 +355,16 @@ class _DashboardPageState extends State<DashboardPage> {
             ],
           ),
           const Divider(),
-          SizedBox(
-            width: double.infinity,
+          // Wrap the DataTable in a scrollable widget
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
             child: DataTable(
               headingTextStyle: const TextStyle(color: Colors.grey, fontWeight: FontWeight.bold, fontSize: 11),
+              // Increase column spacing a bit for readability
+              columnSpacing: 38,
               columns: const [
                 DataColumn(label: Text("BILL NO")),
-                DataColumn(label: Text("TRANSACTION id")),
+                DataColumn(label: Text("TRANSACTION ID")),
                 DataColumn(label: Text("NAME")),
                 DataColumn(label: Text("DATE")),
                 DataColumn(label: Text("AMOUNT")),

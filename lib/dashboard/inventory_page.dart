@@ -130,6 +130,14 @@ class _InventoryPageState extends State<InventoryPage> {
                         decoration: BoxDecoration(
                           color: Colors.white,
                           borderRadius: BorderRadius.circular(12),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.grey.withOpacity(0.1),
+                              spreadRadius: 2,
+                              blurRadius: 8,
+                              offset: const Offset(0, 4), // changes position of shadow
+                            ),
+                          ],
                         ),
                         child: _buildMenuBar(),
                       ),
@@ -144,6 +152,14 @@ class _InventoryPageState extends State<InventoryPage> {
                           decoration: BoxDecoration(
                             color: Colors.white,
                             borderRadius: BorderRadius.circular(12),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.grey.withOpacity(0.1),
+                                spreadRadius: 2,
+                                blurRadius: 8,
+                                offset: const Offset(0, 4), // changes position of shadow
+                              ),
+                            ],
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -198,6 +214,15 @@ class _InventoryPageState extends State<InventoryPage> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            spreadRadius: 2,
+            blurRadius: 8,
+            offset: const Offset(0, 4), // changes position of shadow
+          ),
+        ],
+
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -427,6 +452,15 @@ class _InventoryPageState extends State<InventoryPage> {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.grey.withOpacity(0.1),
+              spreadRadius: 2,
+              blurRadius: 8,
+              offset: const Offset(0, 4), // changes position of shadow
+            ),
+          ],
+
         ),
         child: Row(
           children: [
@@ -469,7 +503,7 @@ class _InventoryPageState extends State<InventoryPage> {
 
   // MODIFIED: tableRow now accepts a Product object
   Widget tableRow(Product product) {
-    Color statusColor = product.isOutOfStock ? Colors.orange : (product.isActive ? Colors.green : Colors.grey);
+    Color statusColor = product.isOutOfStock ? Colors.red : (product.isActive ? Colors.green : Colors.grey);
     String statusText = product.isOutOfStock ? "Out of Stock" : (product.isActive ? "Active" : "Disabled");
 
     return Container(
@@ -493,6 +527,15 @@ class _InventoryPageState extends State<InventoryPage> {
               decoration: BoxDecoration(
                 color: statusColor.withOpacity(0.15),
                 borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.grey.withOpacity(0.1),
+                    spreadRadius: 2,
+                    blurRadius: 8,
+                    offset: const Offset(0, 4), // changes position of shadow
+                  ),
+                ],
+
               ),
               child: Text(
                 statusText,

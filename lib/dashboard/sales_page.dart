@@ -524,7 +524,7 @@ class _SalesScreenState extends State<SalesScreen> {
           _summaryRow('Total Payable', total, bold: true),
           const SizedBox(height: 16),
           _paymentButtons(), // This widget will now manage the selection state
-          const Spacer(),
+          SizedBox(height: 24,),
           SizedBox(
             width: double.infinity,
             height: 48,
@@ -594,50 +594,52 @@ class _SalesScreenState extends State<SalesScreen> {
 }
 
 // MODIFIED PaymentBtn to accept isSelected and onTap
+// ... inside sales_page.dart
+
+// MODIFIED PaymentBtn to be flexible
 class PaymentBtn extends StatelessWidget {
   final IconData icon;
   final String label;
-  final bool isSelected; // NEW
-  final VoidCallback onTap; // NEW
+  final bool isSelected;
+  final VoidCallback onTap;
 
-  const PaymentBtn(this.icon, this.label, {super.key, required this.isSelected, required this.onTap}); // NEW required fields
+  const PaymentBtn(this.icon, this.label,
+      {super.key, required this.isSelected, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     // Define the base style for the outlined button
     final ButtonStyle defaultStyle = OutlinedButton.styleFrom(
       foregroundColor: Colors.black, // Default text/icon color
-      side: const BorderSide(color: Colors.grey, width: 1), // Default border color
+      side: const BorderSide(color: Colors.grey, width: 1), // Default border
       backgroundColor: Colors.white, // Default background
-      // Fixed width to ensure consistent sizing for all buttons
-      minimumSize: const Size(150, 48), // Ensure minimum size for visibility and tap target
-      maximumSize: const Size(150, 48),
-      padding: EdgeInsets.zero, // Remove default padding if desired, or set specific
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12), // Allow padding to adjust
     );
 
     // Define the selected style, overriding parts of the default
     final ButtonStyle selectedStyle = OutlinedButton.styleFrom(
       foregroundColor: Colors.white, // White text/icon when selected
-      backgroundColor: const Color(0xffFE691E), // Orange background when selected
+      backgroundColor: const Color(0xffFE691E), // Orange background
       side: const BorderSide(color: Color(0xffFE691E), width: 1), // Orange border
-      minimumSize: const Size(150, 48),
-      maximumSize: const Size(150, 48),
-      padding: EdgeInsets.zero,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
     );
 
-    return SizedBox(
-      width: 172, // Fixed width for the button
-      child: OutlinedButton.icon(
-        onPressed: onTap, // Use the provided onTap callback
-        icon: Icon(icon),
-        label: Text(label),
-        style: isSelected ? selectedStyle : defaultStyle, // Apply selected style if true
+    // REMOVED the SizedBox with a fixed width. The button's size is now controlled by its parent.
+    return OutlinedButton.icon(
+      onPressed: onTap, // Use the provided onTap callback
+      icon: Icon(icon, size: 20), // Slightly smaller icon
+      label: FittedBox( // Use FittedBox to shrink the label text if needed
+        fit: BoxFit.scaleDown,
+        child: Text(label),
       ),
+      style: isSelected ? selectedStyle : defaultStyle,
     );
   }
 }
+
+// ... CartItem class remains the same ...
 
 class CartItem {
   final String name;

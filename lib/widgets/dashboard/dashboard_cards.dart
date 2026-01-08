@@ -7,20 +7,22 @@ class FinancialCard extends StatelessWidget {
   final String amount;
   final Color color;
   final String status;
-final double width;
+  // final double width; // <<--- REMOVE THIS LINE
+
   const FinancialCard({
     super.key,
     required this.title,
     required this.amount,
     required this.color,
     required this.status,
-    required this.width,
+    // required this.width, // <<--- AND REMOVE THIS LINE
   });
 
   @override
   Widget build(BuildContext context) {
+    // The Container no longer has a fixed width. Its width will be
+    // determined by its parent (in our case, a Flexible widget).
     return Container(
-      width: width,
       // The outer container applies the shadow to the entire card footprint.
       decoration: BoxDecoration(
         boxShadow: [
@@ -35,8 +37,6 @@ final double width;
       child: Stack( // Use Stack to overlay the accent bar on the main card content
         children: [
           // --- Main Card Content Container ---
-          // This container holds the text/icons and has the white background,
-          // rounded corners, and the UNIFORM grey border on all sides.
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
@@ -50,7 +50,11 @@ final double width;
               children: [
                 Text(title, style: const TextStyle(color: Colors.grey, fontSize: 12)),
                 const SizedBox(height: 4),
-                Text(amount, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                // Use FittedBox to make the text shrink if space is tight
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(amount, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                ),
                 const SizedBox(height: 8),
                 Row(
                   children: [
@@ -69,7 +73,6 @@ final double width;
             ),
           ),
           // --- Positioned Colored Accent Bar ---
-          // This creates the colored bar on the right side.
           Positioned(
             right: 0,
             top: 0,
@@ -78,7 +81,6 @@ final double width;
               width: 4, // The width of the accent bar
               decoration: BoxDecoration(
                 color: color, // Dynamic color for the accent bar
-                // Only round the right corners to align with the main card's borderRadius
                 borderRadius: const BorderRadius.only(
                   topRight: Radius.circular(12),
                   bottomRight: Radius.circular(12),
@@ -92,6 +94,8 @@ final double width;
   }
 }
 
+
+// ... PerformanceCard remains the same ...
 class PerformanceCard extends StatelessWidget {
   final String title;
   final String value;
@@ -123,7 +127,7 @@ class PerformanceCard extends StatelessWidget {
             offset: const Offset(0, 4),
           ),
         ],
-        border: Border.all(color: Colors.grey.shade200), // This is uniform, so no issue here.
+        border: Border.all(color: Colors.grey.shade200),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

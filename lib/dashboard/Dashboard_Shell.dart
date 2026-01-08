@@ -13,7 +13,7 @@ class DashboardShell extends StatefulWidget {
 
 class _DashboardShellState extends State<DashboardShell> {
   // A simple way to manage the selected index, just like a BottomNavigationBar.
-  int _selectedIndex = 0;
+  int _selectedIndex = 2;
 
   // List of all the pages that can be displayed in the main content area.
   static const List<Widget> _mainPages = <Widget>[
