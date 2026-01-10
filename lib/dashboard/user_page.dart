@@ -5,7 +5,7 @@ import 'dart:typed_data'; // Import the package
 class User {
   final String id;
   final String username;
-
+  final String email;
   final String role;
   final bool isActive;
   final DateTime lastLogin;
@@ -17,7 +17,7 @@ class User {
   User({
     required this.id,
     required this.username,
-
+    required this.email,
     required this.role,
     required this.isActive,
     required this.lastLogin,
@@ -29,7 +29,7 @@ class User {
 
   User copyWith({
     String? username,
-
+    String? email,
     String? role,
     bool? isActive,
     DateTime? lastLogin,
@@ -41,7 +41,7 @@ class User {
     return User(
       id: id,
       username: username ?? this.username,
-
+      email: email ?? this.email,
       role: role ?? this.role,
       isActive: isActive ?? this.isActive,
       lastLogin: lastLogin ?? this.lastLogin,
@@ -84,7 +84,7 @@ class _UsersPageState extends State<UsersPage> {
       User(
         id: '1',
         username: 'john.doe',
-
+        email: 'john.doe@company.com',
         role: 'Admin',
         isActive: true,
         lastLogin: DateTime.now().subtract(const Duration(hours: 2)),
@@ -94,7 +94,7 @@ class _UsersPageState extends State<UsersPage> {
       User(
         id: '2',
         username: 'sarah.miller',
-
+        email: 'sarah.miller@company.com',
         role: 'Manager',
         isActive: true,
         lastLogin: DateTime.now().subtract(const Duration(hours: 5)),
@@ -104,7 +104,7 @@ class _UsersPageState extends State<UsersPage> {
       User(
         id: '3',
         username: 'mike.chen',
-
+        email: 'mike.chen@gmail.com',
         role: 'User',
         isActive: false,
         lastLogin: DateTime.now().subtract(const Duration(days: 3)),
@@ -114,7 +114,7 @@ class _UsersPageState extends State<UsersPage> {
       User(
         id: '4',
         username: 'emily.white',
-
+        email: 'emily.white@outlook.com',
         role: 'User',
         isActive: true,
         lastLogin: DateTime.now().subtract(const Duration(days: 1)),
@@ -128,7 +128,8 @@ class _UsersPageState extends State<UsersPage> {
   void _filterUsers() {
     setState(() {
       _filteredUsers = _users.where((user) {
-        final matchesSearch = user.username.toLowerCase().contains(_searchController.text.toLowerCase());
+        final matchesSearch = user.username.toLowerCase().contains(_searchController.text.toLowerCase()) ||
+            user.email.toLowerCase().contains(_searchController.text.toLowerCase());
         final matchesRole = _selectedRoleFilter == 'all' || user.role.toLowerCase() == _selectedRoleFilter.toLowerCase();
         return matchesSearch && matchesRole;
       }).toList();
@@ -138,7 +139,7 @@ class _UsersPageState extends State<UsersPage> {
 
   void _showAddUserDialog() {
     final usernameController = TextEditingController();
-
+    final emailController = TextEditingController();
     final fullNameController = TextEditingController();
     final idCardController = TextEditingController();
     final passwordController = TextEditingController();
@@ -254,7 +255,14 @@ class _UsersPageState extends State<UsersPage> {
                           border: OutlineInputBorder(),
                         ),
                       ),
-
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: emailController,
+                        decoration: const InputDecoration(
+                          labelText: 'Email',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
                       const SizedBox(height: 16),
                       TextField(
                         controller: usernameController,
@@ -280,7 +288,6 @@ class _UsersPageState extends State<UsersPage> {
                           border: OutlineInputBorder(),
                         ),
                         items: const [
-                          DropdownMenuItem(value: 'Admin', child: Text('Admin')),
                           DropdownMenuItem(value: 'Manager', child: Text('Manager')),
                           DropdownMenuItem(value: 'User', child: Text('User')),
                         ],
@@ -304,6 +311,7 @@ class _UsersPageState extends State<UsersPage> {
                 ElevatedButton(
                   onPressed: () async {
                     if (usernameController.text.isNotEmpty &&
+                        emailController.text.isNotEmpty &&
                         fullNameController.text.isNotEmpty &&
                         idCardController.text.isNotEmpty &&
                         passwordController.text.isNotEmpty) {
@@ -319,6 +327,7 @@ class _UsersPageState extends State<UsersPage> {
                         _users.add(User(
                           id: DateTime.now().millisecondsSinceEpoch.toString(),
                           username: usernameController.text,
+                          email: emailController.text,
                           role: selectedRole,
                           isActive: true,
                           lastLogin: DateTime.now(),
@@ -353,6 +362,7 @@ class _UsersPageState extends State<UsersPage> {
   }
   void _showEditUserDialog(User user) {
     final usernameController = TextEditingController(text: user.username);
+    final emailController = TextEditingController(text: user.email);
     final idCardController = TextEditingController(text: user.idCardNumber);
     String selectedRole = user.role;
     bool isActive = user.isActive;
@@ -366,84 +376,94 @@ class _UsersPageState extends State<UsersPage> {
               title: const Text('Edit User'),
               content: SizedBox(
                 width: 400,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    TextField(
-                      controller: usernameController,
-                      decoration: const InputDecoration(
-                        labelText: 'Username',
-                        border: OutlineInputBorder(),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextField(
+                        controller: usernameController,
+                        decoration: const InputDecoration(
+                          labelText: 'Username',
+                          border: OutlineInputBorder(),
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: idCardController,
-                      decoration: const InputDecoration(
-                        labelText: 'ID Card Number',
-                        border: OutlineInputBorder(),
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: emailController,
+                        decoration: const InputDecoration(
+                          labelText: 'Email',
+                          border: OutlineInputBorder(),
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 16),
-                    DropdownButtonFormField<String>(
-                      value: selectedRole,
-                      decoration: const InputDecoration(
-                        labelText: 'Role',
-                        border: OutlineInputBorder(),
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: idCardController,
+                        decoration: const InputDecoration(
+                          labelText: 'ID Card Number',
+                          border: OutlineInputBorder(),
+                        ),
                       ),
-                      items: const [
-                        DropdownMenuItem(value: 'Admin', child: Text('Admin')),
-                        DropdownMenuItem(value: 'Manager', child: Text('Manager')),
-                        DropdownMenuItem(value: 'User', child: Text('User')),
-                      ],
-                      onChanged: (value) {
-                        setDialogState(() {
-                          selectedRole = value!;
-                        });
-                      },
-                    ),
-                    const SizedBox(height: 16),
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: Colors.grey.shade300),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            'Account Status',
-                            style: TextStyle(
-                              fontSize: 16,
-                              color: Colors.grey.shade700,
-                            ),
-                          ),
-                          Row(
-                            children: [
-                              Text(
-                                isActive ? 'Active' : 'Inactive',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: isActive ? Colors.green : Colors.red,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Switch(
-                                value: isActive,
-                                activeColor: Colors.green,
-                                onChanged: (value) {
-                                  setDialogState(() {
-                                    isActive = value;
-                                  });
-                                },
-                              ),
-                            ],
-                          ),
+                      const SizedBox(height: 16),
+                      DropdownButtonFormField<String>(
+                        value: selectedRole,
+                        decoration: const InputDecoration(
+                          labelText: 'Role',
+                          border: OutlineInputBorder(),
+                        ),
+                        items: const [
+                          DropdownMenuItem(value: 'Admin', child: Text('Admin')),
+                          DropdownMenuItem(value: 'Manager', child: Text('Manager')),
+                          DropdownMenuItem(value: 'User', child: Text('User')),
                         ],
+                        onChanged: (value) {
+                          setDialogState(() {
+                            selectedRole = value!;
+                          });
+                        },
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 16),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.grey.shade300),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Account Status',
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: Colors.grey.shade700,
+                              ),
+                            ),
+                            Row(
+                              children: [
+                                Text(
+                                  isActive ? 'Active' : 'Inactive',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: isActive ? Colors.green : Colors.red,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Switch(
+                                  value: isActive,
+                                  activeColor: Colors.green,
+                                  onChanged: (value) {
+                                    setDialogState(() {
+                                      isActive = value;
+                                    });
+                                  },
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
               actions: [
@@ -453,12 +473,15 @@ class _UsersPageState extends State<UsersPage> {
                 ),
                 ElevatedButton(
                   onPressed: () {
-                    if (usernameController.text.isNotEmpty && idCardController.text.isNotEmpty) {
+                    if (usernameController.text.isNotEmpty &&
+                        emailController.text.isNotEmpty &&
+                        idCardController.text.isNotEmpty) {
                       setState(() {
                         final index = _users.indexWhere((u) => u.id == user.id);
                         if (index != -1) {
                           _users[index] = user.copyWith(
                             username: usernameController.text,
+                            email: emailController.text,
                             idCardNumber: idCardController.text,
                             role: selectedRole,
                             isActive: isActive,
@@ -491,27 +514,125 @@ class _UsersPageState extends State<UsersPage> {
 
 
   void _showResetPasswordDialog(User user) {
+    final newPasswordController = TextEditingController();
+    final confirmPasswordController = TextEditingController();
+    bool obscureNewPassword = true;
+    bool obscureConfirmPassword = true;
+
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Reset Password'),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Change Password'),
+              content: SizedBox(
+                width: 400,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Change password for ${user.username}',
+                      style: TextStyle(color: Colors.grey.shade600),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: newPasswordController,
+                      obscureText: obscureNewPassword,
+                      decoration: InputDecoration(
+                        labelText: 'New Password',
+                        border: const OutlineInputBorder(),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            obscureNewPassword ? Icons.visibility_off : Icons.visibility,
+                          ),
+                          onPressed: () {
+                            setDialogState(() {
+                              obscureNewPassword = !obscureNewPassword;
+                            });
+                          },
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: confirmPasswordController,
+                      obscureText: obscureConfirmPassword,
+                      decoration: InputDecoration(
+                        labelText: 'Confirm Password',
+                        border: const OutlineInputBorder(),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            obscureConfirmPassword ? Icons.visibility_off : Icons.visibility,
+                          ),
+                          onPressed: () {
+                            setDialogState(() {
+                              obscureConfirmPassword = !obscureConfirmPassword;
+                            });
+                          },
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    if (newPasswordController.text.isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          backgroundColor: Colors.red,
+                          content: Text('Please enter a new password'),
+                        ),
+                      );
+                      return;
+                    }
 
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
+                    if (newPasswordController.text != confirmPasswordController.text) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          backgroundColor: Colors.red,
+                          content: Text('Passwords do not match'),
+                        ),
+                      );
+                      return;
+                    }
 
-            },
-            child: const Text('Send'),
-          ),
-        ],
-      ),
+                    if (newPasswordController.text.length < 6) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          backgroundColor: Colors.red,
+                          content: Text('Password must be at least 6 characters'),
+                        ),
+                      );
+                      return;
+                    }
+
+                    // TODO: Implement your password change logic here
+                    print('Password changed for user: ${user.username}');
+                    print('New password: ${newPasswordController.text}');
+
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Password changed successfully for ${user.username}')),
+                    );
+                  },
+                  child: const Text('Change Password'),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
+
 
   void _deleteUser(User user) {
     showDialog(
@@ -731,18 +852,18 @@ class _UsersPageState extends State<UsersPage> {
       ),
       child: Row(
         children: const [
-          Expanded(flex: 1, child: Text("USERNAME", style: textStyle)),
-          Expanded(flex: 1, child: Align(
-              alignment: Alignment.center,
-              child: Text("Id Card number", style: textStyle))),
+          Expanded(flex: 2, child: Text("USERNAME", style: textStyle)),
           Expanded(flex: 2, child: Align(
-              alignment: Alignment(0.4, 10),
+              alignment: Alignment(-1.8, 10),
+              child: Text("Id card number", style: textStyle))),
+          Expanded(flex: 2, child: Align(
+              alignment: Alignment(-0.5, 10),
               child: Text("ROLE", style: textStyle))),
           Expanded(flex: 1, child: Align(
-              alignment: Alignment(0.4, 10),
+              alignment: Alignment(-1, 10),
               child: Text("STATUS", style: textStyle))),
           Expanded(flex: 1, child: Align(
-              alignment: Alignment(0.5, 10),
+              alignment: Alignment(-1.2, 10),
               child: Text("LAST LOGIN", style: textStyle))),
           Expanded(flex: 2, child: Align(
               alignment: Alignment(0, 10),
@@ -766,7 +887,7 @@ class _UsersPageState extends State<UsersPage> {
       child: Row(
         children: [
           Expanded(flex: 2, child: Text(user.username, style: textStyle)),
-          Expanded(flex: 2, child: Text(user.idCardNumber, style: textStyle)),
+          Expanded(flex: 3, child: Text(user.idCardNumber, style: textStyle)),
           Expanded(
             flex: 2,
             child: Padding(
