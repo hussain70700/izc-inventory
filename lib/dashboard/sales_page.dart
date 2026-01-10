@@ -122,104 +122,168 @@ class _SalesScreenState extends State<SalesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xfff5f6f8),
-      body: Row(
-        children: [
-          /// LEFT - CART SECTION (Now composed of a separate search card and the main cart card)
-          Expanded(
-            flex: 2,
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column( // <--- Column to stack the two cards
-                children: [
-                  // --- NEW: SEPARATE SEARCH BAR CARD ---
-                  Card(
-                    elevation: 4,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    color: Colors.white,
-                    margin: EdgeInsets.zero,
-                    clipBehavior: Clip.antiAlias,
-                    child: _searchBar(), // The search bar widget itself
-                  ),
-
-                  const SizedBox(height: 16), // Space between the search card and the main cart card
-
-                  // --- MAIN CART CARD (Existing structure, but without the search bar) ---
-                  Expanded( // Expanded to allow this card to take remaining vertical space
-                    child: Card(
-                      elevation: 4,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      margin: EdgeInsets.zero,
-                      clipBehavior: Clip.antiAlias,
-                      child: Column(
-                        children: [
-                          // --- GREY HEADER SECTION (for cart header only) ---
-                          Container(
-                            color: Colors.grey.shade200,
-                            // Adjusted padding to control space ABOVE and BELOW _cartHeader content,
-                            // allowing the Divider to be the visual bottom of the grey.
-                            padding: const EdgeInsets.fromLTRB(0, 16, 0, 8), // Top 16, Bottom 8 (for content)
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final bool isNarrow = constraints.maxWidth < 900;
+        final bool isMobile = constraints.maxWidth < 600;
+        
+        return Scaffold(
+          backgroundColor: const Color(0xfff5f6f8),
+          body: isNarrow
+              ? SingleChildScrollView(
+                  child: Padding(
+                    padding: EdgeInsets.all(isMobile ? 12 : 16),
+                    child: Column(
+                      children: [
+                        // Search bar at top
+                        Card(
+                          elevation: 4,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          color: Colors.white,
+                          margin: EdgeInsets.zero,
+                          clipBehavior: Clip.antiAlias,
+                          child: _searchBar(),
+                        ),
+                        const SizedBox(height: 16),
+                        // Cart section
+                        SizedBox(
+                          height: isMobile ? 400 : 500,
+                          child: Card(
+                            elevation: 4,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            margin: EdgeInsets.zero,
+                            clipBehavior: Clip.antiAlias,
                             child: Column(
                               children: [
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 20.0,vertical: 10),
-                                  child: _cartHeader(),
+                                Container(
+                                  color: Colors.grey.shade200,
+                                  padding: const EdgeInsets.fromLTRB(0, 16, 0, 8),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10),
+                                    child: _cartHeader(),
+                                  ),
+                                ),
+                                const Divider(height: 1, thickness: 1),
+                                Expanded(
+                                  child: Container(
+                                    color: Colors.white,
+                                    child: _cartList(),
+                                  ),
+                                ),
+                                Container(
+                                  color: Colors.grey.shade200,
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10),
+                                    child: _cartActions(),
+                                  ),
                                 ),
                               ],
                             ),
                           ),
-                          const Divider(height: 1, thickness: 1,),
-
-                          // --- WHITE LIST & ACTIONS SECTION ---
-                          Expanded(
-                            child: Container(
-                              color: Colors.white,
-                              child: Column(
-                                children: [
-                                  Expanded(child: _cartList()), // Cart list takes available space
-                                  // _cartActions moved here, directly after the list, still within white background
-                                ],
-                              ),
-                            ),
+                        ),
+                        const SizedBox(height: 16),
+                        // Summary panel below on mobile
+                        Card(
+                          elevation: 4,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
                           ),
-                          Container(
-                            color: Colors.grey.shade200, // Background for the actions
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 20.0,vertical: 10), // Padding for actions
-                              child: _cartActions(),
-                            ),
+                          color: Colors.white,
+                          margin: EdgeInsets.zero,
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: _summaryPanel(),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ),
-                ],
-              ),
-            ),
-          ),
-
-          /// RIGHT - SUMMARY
-          Container(
-            width: 400,
-            padding: const EdgeInsets.all(16),
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              boxShadow: [
-                BoxShadow(
-                  blurRadius: 8,
-                  color: Colors.black12,
                 )
-              ],
-            ),
-            child: _summaryPanel(),
-          )
-        ],
-      ),
+              : Row(
+                  children: [
+                    /// LEFT - CART SECTION
+                    Expanded(
+                      flex: 2,
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          children: [
+                            Card(
+                              elevation: 4,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              color: Colors.white,
+                              margin: EdgeInsets.zero,
+                              clipBehavior: Clip.antiAlias,
+                              child: _searchBar(),
+                            ),
+                            const SizedBox(height: 16),
+                            Expanded(
+                              child: Card(
+                                elevation: 4,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                margin: EdgeInsets.zero,
+                                clipBehavior: Clip.antiAlias,
+                                child: Column(
+                                  children: [
+                                    Container(
+                                      color: Colors.grey.shade200,
+                                      padding: const EdgeInsets.fromLTRB(0, 16, 0, 8),
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10),
+                                        child: _cartHeader(),
+                                      ),
+                                    ),
+                                    const Divider(height: 1, thickness: 1),
+                                    Expanded(
+                                      child: Container(
+                                        color: Colors.white,
+                                        child: _cartList(),
+                                      ),
+                                    ),
+                                    Container(
+                                      color: Colors.grey.shade200,
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10),
+                                        child: _cartActions(),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    /// RIGHT - SUMMARY
+                    SizedBox(
+                      width: constraints.maxWidth < 1200 ? 350 : 400,
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: const BoxDecoration(
+                          color: Colors.white,
+                          boxShadow: [
+                            BoxShadow(
+                              blurRadius: 8,
+                              color: Colors.black12,
+                            )
+                          ],
+                        ),
+                        child: _summaryPanel(),
+                      ),
+                    ),
+                  ],
+                ),
+        );
+      },
     );
   }
 

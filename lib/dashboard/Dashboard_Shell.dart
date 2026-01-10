@@ -20,8 +20,9 @@ class _DashboardShellState extends State<DashboardShell> {
     DashboardPage(),
     SalesScreen(),
     InventoryPage(),
+
     // Add other main pages here as you create them
-    // e.g. ReportsPage(), TrackingPage(), etc.
+    // e.g. TrackingPage(), CustomersPage(), etc.
   ];
 
   // A map to link the sidebar string to the correct index.
@@ -30,7 +31,7 @@ class _DashboardShellState extends State<DashboardShell> {
     "Dashboard": 0,
     "Sales": 1,
     "Inventory": 2,
-    "Reports": 0, // Placeholder, points back to Dashboard
+    "Reports": 0,
     "Tracking": 0, // Placeholder
     "Customers": 0, // Placeholder
     "Settings": 0, // Placeholder
@@ -105,30 +106,70 @@ class _DashboardShellState extends State<DashboardShell> {
 
   /// Builds the persistent top header with user info.
   Widget _buildHeader() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(bottom: BorderSide(color: Color(0xFFEEEEEE), width: 2)),
-      ),
-      child: Row(
-        children: [
-          Text("Welcome back, Mr.xyz", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          const Spacer(),
-          const Icon(Icons.notifications_none, color: Colors.grey),
-          const VerticalDivider(thickness: 1, color: Colors.grey, indent: 8, endIndent: 8, width: 32),
-          const Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            mainAxisAlignment: MainAxisAlignment.center,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final bool isNarrow = constraints.maxWidth < 600;
+        final bool isVeryNarrow = constraints.maxWidth < 380;
+
+        return Container(
+          padding: EdgeInsets.symmetric(
+            vertical: isNarrow ? 12 : 17.5,
+          ),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            border: Border(bottom: BorderSide(color: Color(0xFFEEEEEE), width: 2)),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text("Mr.xyz", style: TextStyle(fontWeight: FontWeight.bold)),
-              Text("Logistic manager", style: TextStyle(fontSize: 12, color: Colors.grey)),
+              Padding(
+                padding: EdgeInsets.only(left: isNarrow ? 12 : 24),
+                child: Flexible(
+                  child: Text(
+                    "Welcome back, Mr.xyz",
+                    style: TextStyle(
+                      fontSize: isNarrow ? 14 : 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
+              Padding(
+                padding: EdgeInsets.only(right: isNarrow ? 12 : 24),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.notifications_none, color: Colors.grey, size: isNarrow ? 20 : 24),
+                    if (!isNarrow)
+                      const VerticalDivider(thickness: 1, color: Colors.grey, indent: 8, endIndent: 8, width: 32)
+                    else
+                      const SizedBox(width: 12),
+                    if (!isVeryNarrow) ...[
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text("Mr.xyz", style: TextStyle(fontWeight: FontWeight.bold, fontSize: isNarrow ? 12 : 14)),
+                          if (!isNarrow)
+                            Text("Logistic manager", style: TextStyle(fontSize: isNarrow ? 9 : 12, color: Colors.grey)),
+                        ],
+                      ),
+                      SizedBox(width: isNarrow ? 4 : 8),
+                    ],
+                    IconButton(
+                      onPressed: () {},
+                      icon: Icon(Icons.arrow_drop_down, color: Colors.grey, size: isNarrow ? 20 : 24),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
-          const SizedBox(width: 8),
-          IconButton(onPressed: (){}, icon: Icon(Icons.arrow_drop_down, color: Colors.grey))
-        ],
-      ),
+        );
+      },
     );
   }
 }

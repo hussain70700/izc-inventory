@@ -1,6 +1,7 @@
+// Path: C:/Users/DELL/StudioProjects/izc_inventory/lib/dashboard/dashboard_page.dart
 import 'package:flutter/material.dart';
 import 'package:izc_inventory/utils/dashboard_service.dart';
-import 'package:izc_inventory/widgets/dashboard/dashboard_cards.dart';
+import 'package:izc_inventory/widgets/dashboard/dashboard_cards.dart'; // <<<<< UPDATED IMPORT
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -236,9 +237,6 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  /// Makes the FinancialCard shrink by not having a fixed width.
-  // ... inside _DashboardPageState ...
-
   /// MODIFIED: This now uses a Row with Flexible children to make cards shrink.
   Widget _buildResponsiveSalesCards(bool isNarrow) {
     // Using a Row with Flexible widgets ensures the cards stay on one line and shrink.
@@ -315,9 +313,6 @@ class _DashboardPageState extends State<DashboardPage> {
       ],
     );
   }
-
-// ... all other methods in dashboard_page.dart remain unchanged ...
-
 
   Widget _buildPerformanceSection(bool isNarrow) {
     return Column(
