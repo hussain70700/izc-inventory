@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:izc_inventory/dashboard/dashboard_page.dart';
 import 'package:izc_inventory/dashboard/inventory_page.dart';
 import 'package:izc_inventory/dashboard/sales_page.dart';
+import 'package:izc_inventory/dashboard/user_page.dart';
 import 'package:izc_inventory/widgets/dashboard/sidebar_widget.dart';
 
 class DashboardShell extends StatefulWidget {
@@ -13,14 +14,14 @@ class DashboardShell extends StatefulWidget {
 
 class _DashboardShellState extends State<DashboardShell> {
   // A simple way to manage the selected index, just like a BottomNavigationBar.
-  int _selectedIndex = 2;
+  int _selectedIndex = 3;
 
   // List of all the pages that can be displayed in the main content area.
   static const List<Widget> _mainPages = <Widget>[
     DashboardPage(),
     SalesScreen(),
     InventoryPage(),
-
+UsersPage()
     // Add other main pages here as you create them
     // e.g. TrackingPage(), CustomersPage(), etc.
   ];
@@ -33,7 +34,7 @@ class _DashboardShellState extends State<DashboardShell> {
     "Inventory": 2,
     "Reports": 0,
     "Tracking": 0, // Placeholder
-    "Customers": 0, // Placeholder
+    "Customers": 3, // Placeholder
     "Settings": 0, // Placeholder
   };
 
