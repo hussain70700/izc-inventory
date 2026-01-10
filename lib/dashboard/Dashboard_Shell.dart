@@ -34,7 +34,7 @@ UsersPage()
     "Inventory": 2,
     "Reports": 0,
     "Tracking": 0, // Placeholder
-    "Customers": 3, // Placeholder
+    "Staff": 3, // Placeholder
     "Settings": 0, // Placeholder
   };
 

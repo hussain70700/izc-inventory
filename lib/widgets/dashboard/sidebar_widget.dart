@@ -58,7 +58,7 @@ class SidebarWidget extends StatelessWidget {
               _sidebarItem(Icons.home_outlined, 'Sales', isNarrow),
               _sidebarItem(Icons.analytics_outlined, "Reports", isNarrow),
               _sidebarItem(Icons.location_on_outlined, "Tracking", isNarrow),
-              _sidebarItem(Icons.people_alt_outlined, "Customers", isNarrow),
+              _sidebarItem(Icons.people_alt_outlined, "Staff", isNarrow),
               _sidebarItem(Icons.inventory_outlined, "Inventory", isNarrow),
               const Spacer(),
               const Divider(),

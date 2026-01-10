@@ -1,36 +1,54 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:typed_data'; // Import the package
 
 class User {
   final String id;
   final String username;
-  final String email;
+
   final String role;
   final bool isActive;
   final DateTime lastLogin;
+  final String fullName;
+  final String idCardNumber;
+  final String? imageUrl;
+  final Uint8List? imageBytes; // For web
 
   User({
     required this.id,
     required this.username,
-    required this.email,
+
     required this.role,
     required this.isActive,
     required this.lastLogin,
+    required this.fullName,
+    required this.idCardNumber,
+    this.imageUrl,
+    this.imageBytes,
   });
 
   User copyWith({
     String? username,
-    String? email,
+
     String? role,
     bool? isActive,
     DateTime? lastLogin,
+    String? fullName,
+    String? idCardNumber,
+    String? imageUrl,
+    Uint8List? imageBytes,
   }) {
     return User(
       id: id,
       username: username ?? this.username,
-      email: email ?? this.email,
+
       role: role ?? this.role,
       isActive: isActive ?? this.isActive,
       lastLogin: lastLogin ?? this.lastLogin,
+      fullName: fullName ?? this.fullName,
+      idCardNumber: idCardNumber ?? this.idCardNumber,
+      imageUrl: imageUrl ?? this.imageUrl,
+      imageBytes: imageBytes ?? this.imageBytes,
     );
   }
 }
@@ -66,34 +84,42 @@ class _UsersPageState extends State<UsersPage> {
       User(
         id: '1',
         username: 'john.doe',
-        email: 'john.doe@company.com',
+
         role: 'Admin',
         isActive: true,
         lastLogin: DateTime.now().subtract(const Duration(hours: 2)),
+        fullName: 'Johnathan Doe',
+        idCardNumber: '123456789',
       ),
       User(
         id: '2',
         username: 'sarah.miller',
-        email: 'sarah.miller@company.com',
+
         role: 'Manager',
         isActive: true,
         lastLogin: DateTime.now().subtract(const Duration(hours: 5)),
+        fullName: 'Sarah Miller',
+        idCardNumber: '987654321',
       ),
       User(
         id: '3',
         username: 'mike.chen',
-        email: 'mike.chen@gmail.com',
+
         role: 'User',
         isActive: false,
         lastLogin: DateTime.now().subtract(const Duration(days: 3)),
+        fullName: 'Michael Chen',
+        idCardNumber: '112233445',
       ),
       User(
         id: '4',
         username: 'emily.white',
-        email: 'emily.white@outlook.com',
+
         role: 'User',
         isActive: true,
         lastLogin: DateTime.now().subtract(const Duration(days: 1)),
+        fullName: 'Emily White',
+        idCardNumber: '556677889',
       ),
     ];
     _filteredUsers = List.from(_users);
@@ -102,186 +128,374 @@ class _UsersPageState extends State<UsersPage> {
   void _filterUsers() {
     setState(() {
       _filteredUsers = _users.where((user) {
-        final matchesSearch = user.username.toLowerCase().contains(_searchController.text.toLowerCase()) ||
-            user.email.toLowerCase().contains(_searchController.text.toLowerCase());
+        final matchesSearch = user.username.toLowerCase().contains(_searchController.text.toLowerCase());
         final matchesRole = _selectedRoleFilter == 'all' || user.role.toLowerCase() == _selectedRoleFilter.toLowerCase();
         return matchesSearch && matchesRole;
       }).toList();
     });
   }
 
+
   void _showAddUserDialog() {
     final usernameController = TextEditingController();
-    final emailController = TextEditingController();
+
+    final fullNameController = TextEditingController();
+    final idCardController = TextEditingController();
+    final passwordController = TextEditingController();
     String selectedRole = 'User';
+    XFile? selectedImage;
+    Uint8List? imageBytes;
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Add New User'),
-        content: SizedBox(
-          width: 400,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: usernameController,
-                decoration: const InputDecoration(
-                  labelText: 'Username',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: emailController,
-                decoration: const InputDecoration(
-                  labelText: 'Email',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 16),
-              StatefulBuilder(
-                builder: (context, setDialogState) => DropdownButtonFormField<String>(
-                  value: selectedRole,
-                  decoration: const InputDecoration(
-                    labelText: 'Role',
-                    border: OutlineInputBorder(),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Add New User'),
+              content: SizedBox(
+                width: 450,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // User Image Picker
+                      const Text("User Image", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          OutlinedButton.icon(
+                            onPressed: () async {
+                              try {
+                                final ImagePicker picker = ImagePicker();
+                                final XFile? image = await picker.pickImage(
+                                  source: ImageSource.gallery,
+                                  maxWidth: 800,
+                                  maxHeight: 800,
+                                  imageQuality: 85,
+                                );
+
+                                if (image != null) {
+                                  // Read image bytes for web
+                                  final bytes = await image.readAsBytes();
+                                  setDialogState(() {
+                                    selectedImage = image;
+                                    imageBytes = bytes;
+                                  });
+                                  print("Image selected: ${image.name}, Size: ${bytes.length} bytes");
+                                } else {
+                                  print("No image selected");
+                                }
+                              } catch (e) {
+                                print("Error picking image: $e");
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Error picking image: $e'),
+                                    backgroundColor: Colors.red,
+                                  ),
+                                );
+                              }
+                            },
+                            icon: const Icon(Icons.upload_file),
+                            label: const Text("Choose Image"),
+                          ),
+                          const SizedBox(width: 16),
+                          if (selectedImage != null)
+                            Expanded(
+                              child: Row(
+                                children: [
+                                  if (imageBytes != null)
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(4),
+                                      child: Image.memory(
+                                        imageBytes!,
+                                        width: 40,
+                                        height: 40,
+                                        fit: BoxFit.cover,
+                                      ),
+                                    ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      selectedImage!.name,
+                                      style: const TextStyle(color: Colors.black54),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.close, size: 18),
+                                    onPressed: () {
+                                      setDialogState(() {
+                                        selectedImage = null;
+                                        imageBytes = null;
+                                      });
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ),
+                        ],
+                      ),
+                      const Divider(height: 24),
+
+                      TextField(
+                        controller: fullNameController,
+                        decoration: const InputDecoration(
+                          labelText: 'User Full Name',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: idCardController,
+                        decoration: const InputDecoration(
+                          labelText: 'User ID Card Number',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: usernameController,
+                        decoration: const InputDecoration(
+                          labelText: 'Username',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: passwordController,
+                        obscureText: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Password',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      DropdownButtonFormField<String>(
+                        value: selectedRole,
+                        decoration: const InputDecoration(
+                          labelText: 'Role',
+                          border: OutlineInputBorder(),
+                        ),
+                        items: const [
+                          DropdownMenuItem(value: 'Admin', child: Text('Admin')),
+                          DropdownMenuItem(value: 'Manager', child: Text('Manager')),
+                          DropdownMenuItem(value: 'User', child: Text('User')),
+                        ],
+                        onChanged: (value) {
+                          if (value != null) {
+                            setDialogState(() {
+                              selectedRole = value;
+                            });
+                          }
+                        },
+                      ),
+                    ],
                   ),
-                  items: const [
-                    DropdownMenuItem(value: 'Admin', child: Text('Admin')),
-                    DropdownMenuItem(value: 'Manager', child: Text('Manager')),
-                    DropdownMenuItem(value: 'User', child: Text('User')),
-                  ],
-                  onChanged: (value) {
-                    setDialogState(() {
-                      selectedRole = value!;
-                    });
-                  },
                 ),
               ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (usernameController.text.isNotEmpty && emailController.text.isNotEmpty) {
-                setState(() {
-                  _users.add(User(
-                    id: DateTime.now().millisecondsSinceEpoch.toString(),
-                    username: usernameController.text,
-                    email: emailController.text,
-                    role: selectedRole,
-                    isActive: true,
-                    lastLogin: DateTime.now(),
-                  ));
-                  _filterUsers();
-                });
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('User added successfully')),
-                );
-              }
-            },
-            child: const Text('Add User'),
-          ),
-        ],
-      ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    if (usernameController.text.isNotEmpty &&
+                        fullNameController.text.isNotEmpty &&
+                        idCardController.text.isNotEmpty &&
+                        passwordController.text.isNotEmpty) {
+
+                      // TODO: Upload image to your server here
+                      if (selectedImage != null && imageBytes != null) {
+                        print("Ready to upload image: ${selectedImage!.name}");
+                        print("Image size: ${imageBytes!.length} bytes");
+                        // You can now send imageBytes to your backend via HTTP
+                      }
+
+                      setState(() {
+                        _users.add(User(
+                          id: DateTime.now().millisecondsSinceEpoch.toString(),
+                          username: usernameController.text,
+                          role: selectedRole,
+                          isActive: true,
+                          lastLogin: DateTime.now(),
+                          fullName: fullNameController.text,
+                          idCardNumber: idCardController.text,
+                          imageUrl: selectedImage?.name,
+                          imageBytes: imageBytes,
+                        ));
+                        _filterUsers();
+                      });
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('User added successfully')),
+                      );
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          backgroundColor: Colors.red,
+                          content: Text('Please fill all required fields.'),
+                        ),
+                      );
+                    }
+                  },
+                  child: const Text('Add User'),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
-
   void _showEditUserDialog(User user) {
     final usernameController = TextEditingController(text: user.username);
-    final emailController = TextEditingController(text: user.email);
+    final idCardController = TextEditingController(text: user.idCardNumber);
     String selectedRole = user.role;
+    bool isActive = user.isActive;
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Edit User'),
-        content: SizedBox(
-          width: 400,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: usernameController,
-                decoration: const InputDecoration(
-                  labelText: 'Username',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: emailController,
-                decoration: const InputDecoration(
-                  labelText: 'Email',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 16),
-              StatefulBuilder(
-                builder: (context, setDialogState) => DropdownButtonFormField<String>(
-                  value: selectedRole,
-                  decoration: const InputDecoration(
-                    labelText: 'Role',
-                    border: OutlineInputBorder(),
-                  ),
-                  items: const [
-                    DropdownMenuItem(value: 'Admin', child: Text('Admin')),
-                    DropdownMenuItem(value: 'Manager', child: Text('Manager')),
-                    DropdownMenuItem(value: 'User', child: Text('User')),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Edit User'),
+              content: SizedBox(
+                width: 400,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: usernameController,
+                      decoration: const InputDecoration(
+                        labelText: 'Username',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: idCardController,
+                      decoration: const InputDecoration(
+                        labelText: 'ID Card Number',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    DropdownButtonFormField<String>(
+                      value: selectedRole,
+                      decoration: const InputDecoration(
+                        labelText: 'Role',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: 'Admin', child: Text('Admin')),
+                        DropdownMenuItem(value: 'Manager', child: Text('Manager')),
+                        DropdownMenuItem(value: 'User', child: Text('User')),
+                      ],
+                      onChanged: (value) {
+                        setDialogState(() {
+                          selectedRole = value!;
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey.shade300),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Account Status',
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: Colors.grey.shade700,
+                            ),
+                          ),
+                          Row(
+                            children: [
+                              Text(
+                                isActive ? 'Active' : 'Inactive',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: isActive ? Colors.green : Colors.red,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Switch(
+                                value: isActive,
+                                activeColor: Colors.green,
+                                onChanged: (value) {
+                                  setDialogState(() {
+                                    isActive = value;
+                                  });
+                                },
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
                   ],
-                  onChanged: (value) {
-                    setDialogState(() {
-                      selectedRole = value!;
-                    });
-                  },
                 ),
               ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              setState(() {
-                final index = _users.indexWhere((u) => u.id == user.id);
-                if (index != -1) {
-                  _users[index] = user.copyWith(
-                    username: usernameController.text,
-                    email: emailController.text,
-                    role: selectedRole,
-                  );
-                  _filterUsers();
-                }
-              });
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('User updated successfully')),
-              );
-            },
-            child: const Text('Update'),
-          ),
-        ],
-      ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    if (usernameController.text.isNotEmpty && idCardController.text.isNotEmpty) {
+                      setState(() {
+                        final index = _users.indexWhere((u) => u.id == user.id);
+                        if (index != -1) {
+                          _users[index] = user.copyWith(
+                            username: usernameController.text,
+                            idCardNumber: idCardController.text,
+                            role: selectedRole,
+                            isActive: isActive,
+                          );
+                          _filterUsers();
+                        }
+                      });
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('User updated successfully')),
+                      );
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          backgroundColor: Colors.red,
+                          content: Text('Please fill all required fields.'),
+                        ),
+                      );
+                    }
+                  },
+                  child: const Text('Update'),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
+
 
   void _showResetPasswordDialog(User user) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Reset Password'),
-        content: Text('Send password reset email to ${user.email}?'),
+
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -290,9 +504,7 @@ class _UsersPageState extends State<UsersPage> {
           ElevatedButton(
             onPressed: () {
               Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Password reset email sent to ${user.email}')),
-              );
+
             },
             child: const Text('Send'),
           ),
@@ -354,7 +566,6 @@ class _UsersPageState extends State<UsersPage> {
       return '${difference.inDays} days ago';
     }
   }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -389,7 +600,7 @@ class _UsersPageState extends State<UsersPage> {
             child: ElevatedButton.icon(
               onPressed: _showAddUserDialog,
               icon: const Icon(Icons.person_add,color: Colors.white,),
-              label: const Text("Add New User",style: TextStyle(color: Colors.white),),
+              label: const Text("Add New Member",style: TextStyle(color: Colors.white),),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Color(0xffFE691E),
                 shape: RoundedRectangleBorder(
@@ -520,18 +731,18 @@ class _UsersPageState extends State<UsersPage> {
       ),
       child: Row(
         children: const [
-          Expanded(flex: 2, child: Text("USERNAME", style: textStyle)),
+          Expanded(flex: 1, child: Text("USERNAME", style: textStyle)),
           Expanded(flex: 1, child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text("EMAIL", style: textStyle))),
+              alignment: Alignment.center,
+              child: Text("Id Card number", style: textStyle))),
           Expanded(flex: 2, child: Align(
-              alignment: Alignment(0, 10),
+              alignment: Alignment(0.4, 10),
               child: Text("ROLE", style: textStyle))),
           Expanded(flex: 1, child: Align(
-              alignment: Alignment(0, 10),
+              alignment: Alignment(0.4, 10),
               child: Text("STATUS", style: textStyle))),
           Expanded(flex: 1, child: Align(
-              alignment: Alignment(0, 10),
+              alignment: Alignment(0.5, 10),
               child: Text("LAST LOGIN", style: textStyle))),
           Expanded(flex: 2, child: Align(
               alignment: Alignment(0, 10),
@@ -555,7 +766,7 @@ class _UsersPageState extends State<UsersPage> {
       child: Row(
         children: [
           Expanded(flex: 2, child: Text(user.username, style: textStyle)),
-          Expanded(flex: 3, child: Text(user.email, style: textStyle)),
+          Expanded(flex: 2, child: Text(user.idCardNumber, style: textStyle)),
           Expanded(
             flex: 2,
             child: Padding(
