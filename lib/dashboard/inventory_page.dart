@@ -1,5 +1,5 @@
 // ============================================
-// INVENTORY PAGE - Main Screen with Supabase Integration
+// INVENTORY PAGE - Updated with Session Service
 // lib/screens/inventory_page.dart
 // ============================================
 
@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/product_model.dart';
 import '../services/supabase_service.dart';
+import '../services/session_service.dart';
 
 class InventoryPage extends StatefulWidget {
   const InventoryPage({super.key});
@@ -24,7 +25,9 @@ class _InventoryPageState extends State<InventoryPage> {
   List<StockHistory> _stockHistory = [];
   bool _isLoading = true;
   bool _isAdmin = false;
-  UserProfile? _currentUser;
+  String? _currentUserRole;
+  String? _currentUsername;
+  String? _currentUserEmail;
 
   String _activeFilter = 'Active products';
   int _currentPage = 1;
@@ -44,26 +47,24 @@ class _InventoryPageState extends State<InventoryPage> {
 
   // Initialize all data
   Future<void> _initializeData() async {
-    await _checkAdminStatus();
+    _loadUserSession();
     await _loadData();
     _setupRealtimeListeners();
   }
 
-  // Check if user is admin
-  Future<void> _checkAdminStatus() async {
-    try {
-      final profile = await _supabaseService.getCurrentUserProfile();
-      final isAdmin = await _supabaseService.isCurrentUserAdmin();
+  // Load user session from Hive
+  void _loadUserSession() {
+    setState(() {
+      _currentUserRole = SessionService.getUserRole();
+      _currentUsername = SessionService.getUsername();
+      _currentUserEmail = SessionService.getEmail();
+      _isAdmin = SessionService.isAdmin();
+    });
 
-      if (mounted) {
-        setState(() {
-          _currentUser = profile;
-          _isAdmin = isAdmin;
-        });
-      }
-    } catch (e) {
-      print('Error checking admin status: $e');
-    }
+    print('User session loaded:');
+    print('Role: $_currentUserRole');
+    print('Username: $_currentUsername');
+    print('Is Admin: $_isAdmin');
   }
 
   // Load all data from Supabase
@@ -124,6 +125,8 @@ class _InventoryPageState extends State<InventoryPage> {
         .where((p) => p.isOutOfStock)
         .length;
     _totalValue = _allProducts.fold(0.0, (sum, p) => sum + (p.price * p.stock));
+    print('total values $_totalValue');
+
   }
 
   // Filtered products based on active filter
@@ -267,7 +270,7 @@ class _InventoryPageState extends State<InventoryPage> {
       barrierDismissible: false,
       builder: (dialogContext) {
         return StatefulBuilder(
-          builder: (context, setStateDialog) {
+          builder: (context, setDialogState) {
             return AlertDialog(
               title: const Text('Add Product'),
               content: SingleChildScrollView(
@@ -314,7 +317,7 @@ class _InventoryPageState extends State<InventoryPage> {
                       title: const Text('Active'),
                       value: isActive,
                       onChanged: isSubmitting ? null : (val) {
-                        setStateDialog(() => isActive = val);
+                        setDialogState(() => isActive = val);
                       },
                     ),
                   ],
@@ -347,7 +350,7 @@ class _InventoryPageState extends State<InventoryPage> {
                       return;
                     }
 
-                    setStateDialog(() => isSubmitting = true);
+                    setDialogState(() => isSubmitting = true);
 
                     try {
                       await _supabaseService.addProduct(
@@ -366,7 +369,7 @@ class _InventoryPageState extends State<InventoryPage> {
                       setState(() => _currentPage = 1);
                       await _loadData();
                     } catch (e) {
-                      setStateDialog(() => isSubmitting = false);
+                      setDialogState(() => isSubmitting = false);
                       _showError(e.toString().replaceAll('Exception: ', ''));
                     }
                   },
@@ -412,7 +415,7 @@ class _InventoryPageState extends State<InventoryPage> {
       barrierDismissible: false,
       builder: (dialogContext) {
         return StatefulBuilder(
-          builder: (context, setStateDialog) {
+          builder: (context, setDialogState) {
             return AlertDialog(
               title: const Text('Edit Product'),
               content: SingleChildScrollView(
@@ -459,7 +462,7 @@ class _InventoryPageState extends State<InventoryPage> {
                       title: const Text('Active'),
                       value: isActive,
                       onChanged: isSubmitting ? null : (val) {
-                        setStateDialog(() => isActive = val);
+                        setDialogState(() => isActive = val);
                       },
                     ),
                   ],
@@ -492,7 +495,7 @@ class _InventoryPageState extends State<InventoryPage> {
                       return;
                     }
 
-                    setStateDialog(() => isSubmitting = true);
+                    setDialogState(() => isSubmitting = true);
 
                     try {
                       await _supabaseService.updateProduct(
@@ -511,7 +514,7 @@ class _InventoryPageState extends State<InventoryPage> {
                       _showSuccess('Product "$name" updated successfully');
                       await _loadData();
                     } catch (e) {
-                      setStateDialog(() => isSubmitting = false);
+                      setDialogState(() => isSubmitting = false);
                       _showError(e.toString().replaceAll('Exception: ', ''));
                     }
                   },
@@ -548,7 +551,7 @@ class _InventoryPageState extends State<InventoryPage> {
       builder: (dialogContext) {
         bool isDeleting = false;
         return StatefulBuilder(
-          builder: (context, setStateDialog) {
+          builder: (context, setDialogState) {
             return AlertDialog(
               title: const Text('Delete Product'),
               content: Text('Are you sure you want to delete "${product
@@ -561,7 +564,7 @@ class _InventoryPageState extends State<InventoryPage> {
                 ),
                 ElevatedButton(
                   onPressed: isDeleting ? null : () async {
-                    setStateDialog(() => isDeleting = true);
+                    setDialogState(() => isDeleting = true);
 
                     try {
                       await _supabaseService.deleteProduct(product.id);
@@ -575,7 +578,7 @@ class _InventoryPageState extends State<InventoryPage> {
                         setState(() => _currentPage = _totalPages);
                       }
                     } catch (e) {
-                      setStateDialog(() => isDeleting = false);
+                      setDialogState(() => isDeleting = false);
                       _showError(e.toString().replaceAll('Exception: ', ''));
                     }
                   },
@@ -614,7 +617,7 @@ class _InventoryPageState extends State<InventoryPage> {
       context: context,
       builder: (dialogContext) {
         return StatefulBuilder(
-          builder: (context, setStateDialog) {
+          builder: (context, setDialogState) {
             return AlertDialog(
               title: Text('Restock ${product.name}'),
               content: Column(
@@ -657,7 +660,7 @@ class _InventoryPageState extends State<InventoryPage> {
                       return;
                     }
 
-                    setStateDialog(() => isSubmitting = true);
+                    setDialogState(() => isSubmitting = true);
 
                     try {
                       await _supabaseService.updateProductStock(
@@ -670,7 +673,7 @@ class _InventoryPageState extends State<InventoryPage> {
                       _showSuccess('Product restocked successfully');
                       await _loadData();
                     } catch (e) {
-                      setStateDialog(() => isSubmitting = false);
+                      setDialogState(() => isSubmitting = false);
                       _showError(e.toString().replaceAll('Exception: ', ''));
                     }
                   },
@@ -824,7 +827,6 @@ class _InventoryPageState extends State<InventoryPage> {
 
 // ============================================
 // WIDGET BUILDERS FOR INVENTORY PAGE
-// Add these methods to _InventoryPageState class
 // ============================================
 
   Widget _buildHeader(bool isMobile) {
@@ -839,21 +841,19 @@ class _InventoryPageState extends State<InventoryPage> {
               "Inventory Management",
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
-            if (_currentUser != null)
+            if (_currentUserRole != null)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: _isAdmin ? Colors.orange.shade100 : Colors.blue
-                      .shade100,
+                  color: _isAdmin ? Colors.orange.shade100 : Colors.blue.shade100,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
-                  _currentUser!.role.toUpperCase(),
+                  _currentUserRole!.toUpperCase(),
                   style: TextStyle(
                     fontSize: 10,
                     fontWeight: FontWeight.bold,
-                    color: _isAdmin ? Colors.orange.shade900 : Colors.blue
-                        .shade900,
+                    color: _isAdmin ? Colors.orange.shade900 : Colors.blue.shade900,
                   ),
                 ),
               ),
@@ -885,31 +885,28 @@ class _InventoryPageState extends State<InventoryPage> {
               "Inventory Management",
               style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
             ),
-            if (_currentUser != null)
+            if (_currentUserEmail != null)
               Text(
-                'Logged in as ${_currentUser!.email}',
+                'Logged in as $_currentUserEmail',
                 style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
               ),
           ],
         ),
         Row(
           children: [
-            if (_currentUser != null)
+            if (_currentUserRole != null)
               Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
-                  color: _isAdmin ? Colors.orange.shade100 : Colors.blue
-                      .shade100,
+                  color: _isAdmin ? Colors.orange.shade100 : Colors.blue.shade100,
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Text(
-                  _currentUser!.role.toUpperCase(),
+                  _currentUserRole!.toUpperCase(),
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.bold,
-                    color: _isAdmin ? Colors.orange.shade900 : Colors.blue
-                        .shade900,
+                    color: _isAdmin ? Colors.orange.shade900 : Colors.blue.shade900,
                   ),
                 ),
               ),
@@ -940,6 +937,8 @@ class _InventoryPageState extends State<InventoryPage> {
     return isMobile
         ? Column(
       children: [
+
+
         Row(
           children: [
             Expanded(child: _buildStatCard(
@@ -947,9 +946,11 @@ class _InventoryPageState extends State<InventoryPage> {
                 Icons.inventory, Colors.blue)),
             const SizedBox(width: 8),
             Expanded(child: _buildStatCard(
-                "Total Value", '\$${_totalValue.toStringAsFixed(2)}',
+                "Total Value", "\$${_totalValue.toStringAsFixed(2)}",
                 Icons.attach_money, Colors.green)),
+
           ],
+
         ),
         const SizedBox(height: 8),
         Row(
