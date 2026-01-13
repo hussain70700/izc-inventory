@@ -5,14 +5,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:izc_inventory/dashboard/Dashboard_Shell.dart';
+
+import 'package:izc_inventory/services/session_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'auth/login.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Load environment variables
   await dotenv.load(fileName: ".env");
+
+  // Initialize Hive for session management (MUST be before Supabase)
+  await SessionService.init();
 
   // Initialize Supabase
   await Supabase.initialize(
@@ -38,7 +44,14 @@ class MyApp extends StatelessWidget {
         useMaterial3: true,
         fontFamily: 'Inter',
       ),
-      home: const DashboardShell(),
+      // Check if user is logged in and navigate accordingly
+      home: SessionService.isLoggedIn()
+          ? const DashboardShell()
+          : const LoginPage(),
+      routes: {
+        '/login': (context) => const LoginPage(),
+        '/dashboard': (context) => const DashboardShell(),
+      },
     );
   }
 }
