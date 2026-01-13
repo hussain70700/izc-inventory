@@ -4,8 +4,7 @@ import 'dart:typed_data';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/session_service.dart';
-// Import your user service
-// import 'services/user_service.dart';
+
 
 class User {
   final String id;
