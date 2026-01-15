@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:izc_inventory/dashboard/dashboard_page.dart';
 import 'package:izc_inventory/dashboard/inventory_page.dart';
+import 'package:izc_inventory/dashboard/promo_code_page.dart';
 import 'package:izc_inventory/dashboard/sales_page.dart';
 import 'package:izc_inventory/dashboard/user_page.dart';
 import 'package:izc_inventory/widgets/dashboard/sidebar_widget.dart';
@@ -27,7 +28,8 @@ class _DashboardShellState extends State<DashboardShell> {
     DashboardPage(),
     SalesScreen(),
     InventoryPage(),
-    UsersPage()
+    UsersPage(),
+    PromoCodePage(),
     // Add other main pages here as you create them
     // e.g. TrackingPage(), CustomersPage(), etc.
   ];
@@ -41,7 +43,8 @@ class _DashboardShellState extends State<DashboardShell> {
     "Reports": 0,
     "Tracking": 0, // Placeholder
     "Staff": 3,
-    "Settings": 0, // Placeholder
+    "Settings": 0,
+    "Promo Codes": 4,
   };
 
   // This is used for the header title and sidebar selection.
@@ -252,98 +255,105 @@ class _DashboardShellState extends State<DashboardShell> {
       // The drawer for mobile view.
       drawer: isWide
           ? null
-          : Drawer(
-        child: Column(
-          children: [
-            // User profile header in drawer
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    const Color(0xFFE86B32),
-                    const Color(0xFFE86B32).withOpacity(0.8),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  CircleAvatar(
-                    radius: 30,
-                    backgroundColor: Colors.white,
-                    backgroundImage: _userImageUrl != null && _userImageUrl!.isNotEmpty
-                        ? NetworkImage(_userImageUrl!)
-                        : null,
-                    child: _userImageUrl == null || _userImageUrl!.isEmpty
-                        ? Text(
-                      _userName.isNotEmpty ? _userName[0].toUpperCase() : 'U',
-                      style: const TextStyle(
-                        color: Color(0xFFE86B32),
-                        fontWeight: FontWeight.bold,
-                        fontSize: 24,
-                      ),
-                    )
-                        : null,
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    _userName,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 18,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    SessionService.getEmail() ?? '',
-                    style: const TextStyle(
-                      color: Colors.white70,
-                      fontSize: 14,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          : Builder(
+            builder: (drawerContext) {
+              return Drawer(
+                      child: Column(
+              children: [
+                // User profile header in drawer
+                SafeArea(
+                  bottom: false,
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.3),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      _userRole.toUpperCase(),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
+                      gradient: LinearGradient(
+                        colors: [
+                          const Color(0xFFE86B32),
+                          const Color(0xFFE86B32).withOpacity(0.8),
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
                       ),
                     ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        CircleAvatar(
+                          radius: 30,
+                          backgroundColor: Colors.white,
+                          backgroundImage: _userImageUrl != null && _userImageUrl!.isNotEmpty
+                              ? NetworkImage(_userImageUrl!)
+                              : null,
+                          child: _userImageUrl == null || _userImageUrl!.isEmpty
+                              ? Text(
+                            _userName.isNotEmpty ? _userName[0].toUpperCase() : 'U',
+                            style: const TextStyle(
+                              color: Color(0xFFE86B32),
+                              fontWeight: FontWeight.bold,
+                              fontSize: 24,
+                            ),
+                          )
+                              : null,
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          _userName,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 18,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          SessionService.getEmail() ?? '',
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 14,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.3),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            _userRole.toUpperCase(),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ],
-              ),
-            ),
-            // Sidebar widget
-            Expanded(
-              child: SidebarWidget(
-                selectedItem: _selectedItemName,
-                onSelectItem: _onSelectItem,
-              ),
-            ),
-            // Logout at bottom
-            const Divider(height: 1),
-            ListTile(
-              leading: const Icon(Icons.logout, color: Colors.red),
-              title: const Text(
-                'Logout',
-                style: TextStyle(color: Colors.red),
-              ),
-              onTap: _handleLogout,
-            ),
-          ],
-        ),
-      ),
+                ),
+                // Sidebar widget
+                Expanded(
+                  child: SidebarWidget(
+                    selectedItem: _selectedItemName,
+                    onSelectItem: _onSelectItem,
+                  ),
+                ),
+                // Logout at bottom
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.logout, color: Colors.red),
+                  title: const Text(
+                    'Logout',
+                    style: TextStyle(color: Colors.red),
+                  ),
+                  onTap: _handleLogout,
+                ),
+              ],
+                      ),
+                    );
+            }
+          ),
       body: Row(
         children: [
           // Show sidebar permanently on wide screens.
@@ -414,17 +424,6 @@ class _DashboardShellState extends State<DashboardShell> {
                       onSelectItem: _onSelectItem,
                     ),
                   ),
-                  // Logout at bottom
-                  const Divider(height: 1),
-                  ListTile(
-                    leading: const Icon(Icons.logout, color: Colors.red, size: 20),
-                    title: const Text(
-                      'Logout',
-                      style: TextStyle(color: Colors.red, fontSize: 14),
-                    ),
-                    dense: true,
-                    onTap: _handleLogout,
-                  ),
                 ],
               ),
             ),
@@ -464,9 +463,9 @@ class _DashboardShellState extends State<DashboardShell> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Padding(
-                padding: EdgeInsets.only(left: isNarrow ? 12 : 24),
-                child: Flexible(
+              Expanded(
+                child: Padding(
+                  padding: EdgeInsets.only(left: isNarrow ? 12 : 24),
                   child: Text(
                     "Welcome back, $_userName",
                     style: TextStyle(

@@ -1,10 +1,15 @@
 // ============================================
-// SUPABASE SERVICE
+// SUPABASE SERVICE - Updated with Sales Integration
 // lib/services/supabase_service.dart
 // ============================================
 
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../models/cart_item_model.dart';
+import '../models/customer_model.dart';
 import '../models/product_model.dart';
+
+
+
 
 class SupabaseService {
   // Singleton pattern
@@ -494,6 +499,353 @@ class SupabaseService {
       print('Error bulk deleting products: $e');
       throw Exception('Failed to bulk delete products: ${e.toString()}');
     }
+  }
+
+  // ============================================
+  // CUSTOMER MANAGEMENT (NEW)
+  // ============================================
+
+  /// Find customer by phone or create new one
+  Future<Customer> findOrCreateCustomer(String name, String phone) async {
+    try {
+      // First, try to find existing customer by phone
+      final existingCustomers = await _supabase
+          .from('customers')
+          .select()
+          .eq('phone', phone)
+          .limit(1);
+
+      if (existingCustomers.isNotEmpty) {
+        // Customer exists, return it
+        print('Existing customer found: $phone');
+        return Customer.fromJson(existingCustomers.first);
+      }
+
+      // Customer doesn't exist, create new one
+      print('Creating new customer: $name - $phone');
+      final newCustomer = await _supabase
+          .from('customers')
+          .insert({
+        'name': name,
+        'phone': phone,
+      })
+          .select()
+          .single();
+
+      return Customer.fromJson(newCustomer);
+    } catch (e) {
+      print('Error processing customer: $e');
+      throw Exception('Failed to process customer: ${e.toString()}');
+    }
+  }
+
+  /// Get all customers
+  Future<List<Customer>> getAllCustomers() async {
+    try {
+      final response = await _supabase
+          .from('customers')
+          .select()
+          .order('created_at', ascending: false);
+
+      return (response as List)
+          .map((json) => Customer.fromJson(json))
+          .toList();
+    } catch (e) {
+      print('Error fetching customers: $e');
+      throw Exception('Failed to fetch customers: ${e.toString()}');
+    }
+  }
+
+  /// Search customers by name or phone
+  Future<List<Customer>> searchCustomers(String query) async {
+    try {
+      final response = await _supabase
+          .from('customers')
+          .select()
+          .or('name.ilike.%$query%,phone.ilike.%$query%')
+          .order('name');
+
+      return (response as List)
+          .map((json) => Customer.fromJson(json))
+          .toList();
+    } catch (e) {
+      print('Error searching customers: $e');
+      return [];
+    }
+  }
+
+  // ============================================
+  // SALES PROCESSING (NEW)
+  // ============================================
+
+  /// Create a sale and update inventory
+  Future<String> createSale({
+    required String customerId,
+    required List<CartItem> items,
+    required double subtotal,
+    required double discount,
+    required double tax,
+    required double total,
+    required String paymentMethod,
+    String? notes,
+  }) async {
+    try {
+      print('Creating sale for customer: $customerId');
+      print('Items count: ${items.length}');
+      print('Total: \$${total.toStringAsFixed(2)}');
+
+      // 1. Create the sale record
+      final saleData = await _supabase
+          .from('sales')
+          .insert({
+        'customer_id': customerId,
+        'subtotal': subtotal,
+        'discount': discount,
+        'tax': tax,
+        'total': total,
+        'payment_method': paymentMethod,
+        'notes': notes,
+        'sale_date': DateTime.now().toIso8601String(),
+      })
+          .select()
+          .single();
+
+      final saleId = saleData['id'];
+      print('Sale created with ID: $saleId');
+
+      // 2. Create sale items and update inventory
+      for (final item in items) {
+        print('Processing item: ${item.name} x ${item.qty}');
+
+        // Validate that product name exists
+        if (item.name.isEmpty) {
+          throw Exception('Product name is missing for item with ID: ${item.productId}');
+        }
+
+        // Insert sale item
+        await _supabase.from('sale_items').insert({
+          'sale_id': saleId,
+          'product_id': item.productId,
+          'quantity': item.qty,
+          'price': item.price,
+          'total': item.price * item.qty,
+        });
+
+        // Get current product stock AND name from database to ensure consistency
+        final product = await _supabase
+            .from('products')
+            .select('stock, name')
+            .eq('id', item.productId)
+            .single();
+
+        final currentStock = product['stock'] as int;
+        final productName = product['name'] as String;
+        final newStock = currentStock - item.qty;
+
+        print('Updating stock for $productName: $currentStock -> $newStock');
+
+        // Update product stock
+        await _supabase
+            .from('products')
+            .update({'stock': newStock})
+            .eq('id', item.productId);
+
+        // Add to stock history with verified product name from database
+        await _supabase.from('stock_history').insert({
+          'product_id': item.productId,
+          'product_name': productName,  // Use name from database, not from cart
+          'old_stock': currentStock,
+          'new_stock': newStock,
+          'change_amount': -item.qty,  // Correct column name
+          'reason': 'Sale #$saleId',
+          'is_restock': false,
+        });
+      }
+
+      print('Sale completed successfully!');
+      return saleId;
+    } catch (e) {
+      print('Error creating sale: $e');
+      throw Exception('Failed to create sale: ${e.toString()}');
+    }
+  }
+  /// Get sales history
+  Future<List<Map<String, dynamic>>> getSalesHistory({int limit = 50}) async {
+    try {
+      final response = await _supabase
+          .from('sales')
+          .select('''
+            *,
+            customers (
+              name,
+              phone
+            ),
+            sale_items (
+              *,
+              products (
+                name,
+                sku
+              )
+            )
+          ''')
+          .order('sale_date', ascending: false)
+          .limit(limit);
+
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      print('Error fetching sales history: $e');
+      throw Exception('Failed to fetch sales history: ${e.toString()}');
+    }
+  }
+
+  /// Get sales by customer
+  Future<List<Map<String, dynamic>>> getSalesByCustomer(String customerId) async {
+    try {
+      final response = await _supabase
+          .from('sales')
+          .select('''
+            *,
+            sale_items (
+              *,
+              products (
+                name,
+                sku
+              )
+            )
+          ''')
+          .eq('customer_id', customerId)
+          .order('sale_date', ascending: false);
+
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      print('Error fetching customer sales: $e');
+      throw Exception('Failed to fetch customer sales: ${e.toString()}');
+    }
+  }
+
+  /// Get daily sales total
+  Future<double> getDailySalesTotal() async {
+    try {
+      final today = DateTime.now();
+      final startOfDay = DateTime(today.year, today.month, today.day);
+
+      final response = await _supabase
+          .from('sales')
+          .select('total')
+          .gte('sale_date', startOfDay.toIso8601String());
+
+      double total = 0;
+      for (var sale in response) {
+        total += (sale['total'] as num).toDouble();
+      }
+
+      return total;
+    } catch (e) {
+      print('Error calculating daily sales: $e');
+      return 0.0;
+    }
+  }
+
+  /// Get monthly sales total
+  Future<double> getMonthlySalesTotal() async {
+    try {
+      final now = DateTime.now();
+      final startOfMonth = DateTime(now.year, now.month, 1);
+
+      final response = await _supabase
+          .from('sales')
+          .select('total')
+          .gte('sale_date', startOfMonth.toIso8601String());
+
+      double total = 0;
+      for (var sale in response) {
+        total += (sale['total'] as num).toDouble();
+      }
+
+      return total;
+    } catch (e) {
+      print('Error calculating monthly sales: $e');
+      return 0.0;
+    }
+  }
+
+  /// Get sales count today
+  Future<int> getTodaySalesCount() async {
+    try {
+      final today = DateTime.now();
+      final startOfDay = DateTime(today.year, today.month, today.day);
+
+      final response = await _supabase
+          .from('sales')
+          .select('id')
+          .gte('sale_date', startOfDay.toIso8601String());
+
+      return response.length;
+    } catch (e) {
+      print('Error getting today sales count: $e');
+      return 0;
+    }
+  }
+
+  /// Get best selling products
+  Future<List<Map<String, dynamic>>> getBestSellingProducts({int limit = 10}) async {
+    try {
+      // This would ideally be done with a SQL query, but we'll process it in Dart
+      final sales = await getSalesHistory(limit: 1000);
+      final Map<String, Map<String, dynamic>> productSales = {};
+
+      for (var sale in sales) {
+        final items = sale['sale_items'] as List;
+        for (var item in items) {
+          final productId = item['product_id'];
+          final quantity = item['quantity'] as int;
+          final total = (item['total'] as num).toDouble();
+          final productName = item['products']['name'];
+          final productSku = item['products']['sku'];
+
+          if (productSales.containsKey(productId)) {
+            productSales[productId]!['total_quantity'] += quantity;
+            productSales[productId]!['total_revenue'] += total;
+          } else {
+            productSales[productId] = {
+              'product_id': productId,
+              'product_name': productName,
+              'product_sku': productSku,
+              'total_quantity': quantity,
+              'total_revenue': total,
+            };
+          }
+        }
+      }
+
+      final sortedProducts = productSales.values.toList()
+        ..sort((a, b) => (b['total_quantity'] as int).compareTo(a['total_quantity'] as int));
+
+      return sortedProducts.take(limit).toList();
+    } catch (e) {
+      print('Error getting best selling products: $e');
+      return [];
+    }
+  }
+
+  // ============================================
+  // SALES EXPORT
+  // ============================================
+
+  /// Generate CSV string from sales
+  String generateSalesCSV(List<Map<String, dynamic>> sales) {
+    final buffer = StringBuffer();
+    buffer.writeln('Sale ID,Date,Customer,Phone,Subtotal,Discount,Tax,Total,Payment Method');
+
+    for (final sale in sales) {
+      final customer = sale['customers'];
+      final saleDate = DateTime.parse(sale['sale_date']).toString();
+
+      buffer.writeln(
+          '"${sale['id']}","$saleDate","${customer['name']}","${customer['phone']}",${sale['subtotal']},${sale['discount']},${sale['tax']},${sale['total']},"${sale['payment_method']}"');
+    }
+
+    return buffer.toString();
   }
 
   // ============================================

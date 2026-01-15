@@ -1,5 +1,3 @@
-
-
 import 'package:flutter/material.dart';
 
 class SidebarWidget extends StatelessWidget {
@@ -17,7 +15,7 @@ class SidebarWidget extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final bool isNarrow = constraints.maxWidth < 200;
-        
+
         return Container(
           decoration: BoxDecoration(
             color: Colors.white,
@@ -25,6 +23,7 @@ class SidebarWidget extends StatelessWidget {
           ),
           child: Column(
             children: [
+              // Logo section - fixed height
               SizedBox(
                 height: isNarrow ? 60 : 75,
                 width: double.infinity,
@@ -53,30 +52,41 @@ class SidebarWidget extends StatelessWidget {
                   ],
                 ),
               ),
-              SizedBox(height: isNarrow ? 12 : 20),
-              _sidebarItem(Icons.dashboard, "Dashboard", isNarrow),
-              _sidebarItem(Icons.home_outlined, 'Sales', isNarrow),
-              _sidebarItem(Icons.analytics_outlined, "Reports", isNarrow),
-              _sidebarItem(Icons.location_on_outlined, "Tracking", isNarrow),
-              _sidebarItem(Icons.people_alt_outlined, "Staff", isNarrow),
-              _sidebarItem(Icons.inventory_outlined, "Inventory", isNarrow),
-              const Spacer(),
-              const Divider(),
+
+              // Scrollable menu items - takes available space
+              Expanded(
+                child: ListView(
+                  padding: EdgeInsets.only(top: isNarrow ? 12 : 20),
+                  children: [
+                    _sidebarItem(Icons.dashboard, "Dashboard", isNarrow),
+                    _sidebarItem(Icons.home_outlined, 'Sales', isNarrow),
+                    _sidebarItem(Icons.analytics_outlined, "Reports", isNarrow),
+                    _sidebarItem(Icons.location_on_outlined, "Tracking", isNarrow),
+                    _sidebarItem(Icons.people_alt_outlined, "Staff", isNarrow),
+                    _sidebarItem(Icons.inventory_outlined, "Inventory", isNarrow),
+                    _sidebarItem(Icons.discount, "Promo Codes", isNarrow),
+                  ],
+                ),
+              ),
+
+              // Help section - fixed at bottom
+              const Divider(height: 1),
               Container(
-                margin: EdgeInsets.all(isNarrow ? 8 : 16),
-                padding: EdgeInsets.all(isNarrow ? 12 : 16),
+                margin: EdgeInsets.all(isNarrow ? 8 : 10),
+                padding: EdgeInsets.all(isNarrow ? 12 : 10),
                 decoration: BoxDecoration(
                   color: Colors.grey[100],
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: Colors.grey, width: 0.7),
                 ),
                 child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
                       "Need Help?",
                       style: TextStyle(
                         fontWeight: FontWeight.w900,
-                        fontSize: isNarrow ? 14 : 18,
+                        fontSize: isNarrow ? 14 : 16,
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -121,17 +131,16 @@ class SidebarWidget extends StatelessWidget {
         title: isNarrow
             ? null
             : Text(
-                label,
-                style: TextStyle(
-                  color: isSelected ? Color(0xffFE691E) : Colors.grey.shade600,
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                  fontSize: isNarrow ? 12 : 14,
-                ),
-              ),
+          label,
+          style: TextStyle(
+            color: isSelected ? Color(0xffFE691E) : Colors.grey.shade600,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+            fontSize: isNarrow ? 12 : 14,
+          ),
+        ),
         onTap: () => onSelectItem(label),
         contentPadding: EdgeInsets.symmetric(horizontal: isNarrow ? 8 : 16, vertical: isNarrow ? 4 : 8),
       ),
     );
   }
-
 }
