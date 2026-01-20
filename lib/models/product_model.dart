@@ -107,10 +107,7 @@ class StockHistory {
   final String productName;
   final int? oldStock;
   final int newStock;
-  final int changeAmount;
   final String reason;
-  final bool isRestock;
-  final String? changedBy;
   final DateTime createdAt;
 
   StockHistory({
@@ -119,55 +116,58 @@ class StockHistory {
     required this.productName,
     this.oldStock,
     required this.newStock,
-    required this.changeAmount,
     required this.reason,
-    required this.isRestock,
-    this.changedBy,
     required this.createdAt,
   });
 
-  // Create StockHistory from JSON
   factory StockHistory.fromJson(Map<String, dynamic> json) {
-    return StockHistory(
-      id: json['id'] as String,
-      productId: json['product_id'] as String,
-      productName: json['product_name'] as String,
-      oldStock: json['old_stock'] as int?,
-      newStock: json['new_stock'] as int,
-      changeAmount: json['change_amount'] as int,
-      reason: json['reason'] as String,
-      isRestock: json['is_restock'] as bool,
-      changedBy: json['changed_by'] as String?,
-      createdAt: DateTime.parse(json['created_at'] as String),
-    );
+    print('🔧 Parsing StockHistory from: $json');
+
+    try {
+      // Handle product name - it could be in different places
+      String productName = 'Unknown Product';
+
+      if (json['products'] != null) {
+        // If using .select('*, products!inner(name)')
+        if (json['products'] is Map) {
+          productName = json['products']['name'] as String? ?? 'Unknown';
+        } else if (json['products'] is List && (json['products'] as List).isNotEmpty) {
+          productName = json['products'][0]['name'] as String? ?? 'Unknown';
+        }
+      } else if (json['product_name'] != null) {
+        // If product name is directly in the row
+        productName = json['product_name'] as String;
+      }
+
+      print('  ✓ Product name: $productName');
+
+      return StockHistory(
+        id: json['id'] as String,
+        productId: json['product_id'] as String,
+        productName: productName,
+        oldStock: json['old_stock'] as int?,
+        newStock: json['new_stock'] as int,
+        reason: json['reason'] as String? ?? 'No reason provided',
+        createdAt: DateTime.parse(json['created_at'] as String),
+      );
+    } catch (e) {
+      print('❌ Error parsing StockHistory: $e');
+      print('   JSON was: $json');
+      rethrow;
+    }
   }
 
-  // Convert to JSON
-  Map<String, dynamic> toJson() {
-    return {
-      'product_id': productId,
-      'product_name': productName,
-      'old_stock': oldStock,
-      'new_stock': newStock,
-      'change_amount': changeAmount,
-      'reason': reason,
-      'is_restock': isRestock,
-    };
+  bool get isRestock {
+    if (oldStock == null) return true; // Initial stock is considered restock
+    return newStock > oldStock!;
   }
 
-  // Get human-readable time ago
   String get timeAgo {
     final now = DateTime.now();
     final difference = now.difference(createdAt);
 
-    if (difference.inDays > 365) {
-      final years = (difference.inDays / 365).floor();
-      return '${years}y ago';
-    } else if (difference.inDays > 30) {
-      final months = (difference.inDays / 30).floor();
-      return '${months}mo ago';
-    } else if (difference.inDays > 0) {
-      return difference.inDays == 1 ? 'Yesterday' : '${difference.inDays}d ago';
+    if (difference.inDays > 0) {
+      return '${difference.inDays}d ago';
     } else if (difference.inHours > 0) {
       return '${difference.inHours}h ago';
     } else if (difference.inMinutes > 0) {
@@ -179,7 +179,7 @@ class StockHistory {
 
   @override
   String toString() {
-    return 'StockHistory(productName: $productName, change: $changeAmount, reason: $reason)';
+    return 'StockHistory(product: $productName, $oldStock → $newStock, reason: $reason)';
   }
 }
 

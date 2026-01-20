@@ -440,8 +440,18 @@ class _ReportsPageState extends State<ReportsPage> {
         children: [
           // Header
           Container(
-            color: Colors.white,
             padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.grey.withOpacity(0.2),
+                  spreadRadius: 0,
+                  blurRadius: 6,
+                  offset: Offset(0, 8)
+                )
+              ]
+            ),
             child: Column(
               children: [
                 Row(
@@ -460,6 +470,7 @@ class _ReportsPageState extends State<ReportsPage> {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 12),
                           decoration: BoxDecoration(
+                            color: Colors.white,
                             border: Border.all(color: Colors.grey.shade300),
                             borderRadius: BorderRadius.circular(8),
                           ),
@@ -549,6 +560,8 @@ class _ReportsPageState extends State<ReportsPage> {
                   // Best Selling Products
                   if (_bestSellingProducts.isNotEmpty) ...[
                     Card(
+                      elevation: 5,
+                      color: Colors.white,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -605,6 +618,8 @@ class _ReportsPageState extends State<ReportsPage> {
 
                   // Recent Sales
                   Card(
+                    elevation: 5,
+                    color: Colors.white,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -697,6 +712,8 @@ class _ReportsPageState extends State<ReportsPage> {
 
   Widget _buildSalesChart() {
     return Card(
+      elevation: 5,
+      color: Colors.white,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -885,7 +902,8 @@ class _StatCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
-
+      elevation: 5,
+color: Colors.white,
       child: Padding(
         padding: const EdgeInsets.all(2),
         child: Column(

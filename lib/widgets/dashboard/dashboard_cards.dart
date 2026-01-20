@@ -21,10 +21,10 @@ class FinancialCard extends StatelessWidget {
       decoration: BoxDecoration(
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            spreadRadius: 2,
+            color: Colors.grey.withOpacity(0.4),
+            spreadRadius: 4,
             blurRadius: 8,
-            offset: const Offset(0, 4),
+            offset: const Offset(0, 5),
           ),
         ],
       ),
@@ -110,7 +110,7 @@ class PerformanceCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
+            color: Colors.grey.withOpacity(0.4),
             spreadRadius: 2,
             blurRadius: 8,
             offset: const Offset(0, 4),

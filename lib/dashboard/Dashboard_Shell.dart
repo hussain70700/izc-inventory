@@ -17,7 +17,8 @@ class DashboardShell extends StatefulWidget {
 
 class _DashboardShellState extends State<DashboardShell> {
   // A simple way to manage the selected index, just like a BottomNavigationBar.
-  int _selectedIndex = 0;
+  int _selectedIndex = 5;
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   // Get user info from session
   String get _userName => SessionService.getFullName() ?? 'User';
@@ -55,22 +56,25 @@ class _DashboardShellState extends State<DashboardShell> {
     orElse: () => "Dashboard", // Fallback
   );
 
+  // In the _onSelectItem method
+
   void _onSelectItem(String itemName) {
     setState(() {
-      // Update the index based on the string from the sidebar.
       _selectedIndex = _pageIndexMap[itemName] ?? 0;
     });
-    // Close the drawer if it's open (for mobile view).
-    if (Scaffold.of(context).isDrawerOpen) {
+    // Use the key to safely access the Scaffold's state
+    if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
       Navigator.of(context).pop();
     }
   }
+
 
   // Handle logout
   Future<void> _handleLogout() async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
         title: const Text('Logout'),
         content: const Text('Are you sure you want to logout?'),
         actions: [
@@ -229,31 +233,14 @@ class _DashboardShellState extends State<DashboardShell> {
 
   @override
   Widget build(BuildContext context) {
-    const double kTabletBreakpoint = 768.0;
+    const double kTabletBreakpoint = 900.0;
     final bool isWide = MediaQuery.of(context).size.width >= kTabletBreakpoint;
 
     return Scaffold(
+      key: _scaffoldKey,
       backgroundColor: const Color(0xfff5f6f8),
       // The AppBar is now part of the shell, so it's consistent.
-      appBar: isWide
-          ? null
-          : AppBar(
-        title: Text(_selectedItemName),
-        backgroundColor: const Color(0xFF1A237E),
-        iconTheme: const IconThemeData(color: Colors.white),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.notifications_none),
-            onPressed: () {
-              // Handle notifications
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.account_circle),
-            onPressed: _showUserMenu,
-          ),
-        ],
-      ),
+      appBar: null,
       // The drawer for mobile view.
       drawer: isWide
           ? null
@@ -262,78 +249,7 @@ class _DashboardShellState extends State<DashboardShell> {
               return Drawer(
                       child: Column(
               children: [
-                // User profile header in drawer
-                SafeArea(
-                  bottom: false,
-                  child: Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          const Color(0xFFE86B32),
-                          const Color(0xFFE86B32).withOpacity(0.8),
-                        ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        CircleAvatar(
-                          radius: 30,
-                          backgroundColor: Colors.white,
-                          backgroundImage: _userImageUrl != null && _userImageUrl!.isNotEmpty
-                              ? NetworkImage(_userImageUrl!)
-                              : null,
-                          child: _userImageUrl == null || _userImageUrl!.isEmpty
-                              ? Text(
-                            _userName.isNotEmpty ? _userName[0].toUpperCase() : 'U',
-                            style: const TextStyle(
-                              color: Color(0xFFE86B32),
-                              fontWeight: FontWeight.bold,
-                              fontSize: 24,
-                            ),
-                          )
-                              : null,
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          _userName,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 18,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          SessionService.getEmail() ?? '',
-                          style: const TextStyle(
-                            color: Colors.white70,
-                            fontSize: 14,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.3),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Text(
-                            _userRole.toUpperCase(),
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+
                 // Sidebar widget
                 Expanded(
                   child: SidebarWidget(
@@ -364,61 +280,7 @@ class _DashboardShellState extends State<DashboardShell> {
               width: 250,
               child: Column(
                 children: [
-                  // User profile in sidebar
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      border: Border(
-                        bottom: BorderSide(color: Colors.grey.shade200),
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        CircleAvatar(
-                          radius: 20,
-                          backgroundColor: const Color(0xFFFFE0D3),
-                          backgroundImage: _userImageUrl != null && _userImageUrl!.isNotEmpty
-                              ? NetworkImage(_userImageUrl!)
-                              : null,
-                          child: _userImageUrl == null || _userImageUrl!.isEmpty
-                              ? Text(
-                            _userName.isNotEmpty ? _userName[0].toUpperCase() : 'U',
-                            style: const TextStyle(
-                              color: Color(0xFFE86B32),
-                              fontWeight: FontWeight.bold,
-                            ),
-                          )
-                              : null,
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                _userName,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 14,
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              Text(
-                                _userRole,
-                                style: TextStyle(
-                                  color: Colors.grey[600],
-                                  fontSize: 12,
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+
                   // Sidebar menu
                   Expanded(
                     child: SidebarWidget(
@@ -448,30 +310,48 @@ class _DashboardShellState extends State<DashboardShell> {
   }
 
   /// Builds the persistent top header with user info.
+  /// Builds the persistent top header with user info, adding a hamburger menu on narrow screens.
   Widget _buildHeader() {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final bool isNarrow = constraints.maxWidth < 600;
-        final bool isVeryNarrow = constraints.maxWidth < 380;
+        // Use the same breakpoint as in the main build method to determine mobile vs wide
+        const double kTabletBreakpoint = 900.0;
+        final bool isMobile = constraints.maxWidth < kTabletBreakpoint;
+
+        final bool isInternalNarrow = constraints.maxWidth < 600;
+        final bool isInternalVeryNarrow = constraints.maxWidth < 380;
 
         return Container(
           padding: EdgeInsets.symmetric(
-            vertical: isNarrow ? 12 : 17.5,
+            vertical: isMobile ? 8 : (isInternalNarrow ? 12 : 17.5), // Slightly less vertical padding for mobile
           ),
           decoration: const BoxDecoration(
             color: Colors.white,
             border: Border(bottom: BorderSide(color: Color(0xFFEEEEEE), width: 2)),
           ),
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            // Change mainAxisAlignment to start, Expanded widgets will handle spacing
+            mainAxisAlignment: MainAxisAlignment.start,
             children: [
+              // --- HAMBURGER ICON ADDED HERE FOR MOBILE VIEW ---
+              if (isMobile)
+                IconButton(
+                  icon: const Icon(Icons.menu, color: Colors.grey), // Match existing icon color
+                  onPressed: () {
+                    _scaffoldKey.currentState?.openDrawer(); // Opens the drawer
+                  },
+                  tooltip: 'Open menu',
+                ),
+              // --- END HAMBURGER ICON ---
+
               Expanded(
                 child: Padding(
-                  padding: EdgeInsets.only(left: isNarrow ? 12 : 24),
+                  // Adjust left padding: less if hamburger is present, otherwise existing padding
+                  padding: EdgeInsets.only(left: isMobile ? 8 : (isInternalNarrow ? 12 : 24)),
                   child: Text(
                     "Welcome back, $_userName",
                     style: TextStyle(
-                      fontSize: isNarrow ? 14 : 16,
+                      fontSize: isInternalNarrow ? 14 : 16,
                       fontWeight: FontWeight.bold,
                     ),
                     overflow: TextOverflow.ellipsis,
@@ -479,7 +359,7 @@ class _DashboardShellState extends State<DashboardShell> {
                 ),
               ),
               Padding(
-                padding: EdgeInsets.only(right: isNarrow ? 12 : 24),
+                padding: EdgeInsets.only(right: isInternalNarrow ? 12 : 24),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -487,14 +367,14 @@ class _DashboardShellState extends State<DashboardShell> {
                       icon: Icon(
                         Icons.notifications_none,
                         color: Colors.grey,
-                        size: isNarrow ? 20 : 24,
+                        size: isInternalNarrow ? 20 : 24,
                       ),
                       onPressed: () {
                         // Handle notifications
                       },
                       tooltip: 'Notifications',
                     ),
-                    if (!isNarrow)
+                    if (!isInternalNarrow)
                       const VerticalDivider(
                         thickness: 1,
                         color: Colors.grey,
@@ -504,7 +384,7 @@ class _DashboardShellState extends State<DashboardShell> {
                       )
                     else
                       const SizedBox(width: 12),
-                    if (!isVeryNarrow) ...[
+                    if (!isInternalVeryNarrow) ...[
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -513,27 +393,27 @@ class _DashboardShellState extends State<DashboardShell> {
                             _userName,
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
-                              fontSize: isNarrow ? 12 : 14,
+                              fontSize: isInternalNarrow ? 12 : 14,
                             ),
                           ),
-                          if (!isNarrow)
+                          if (!isInternalNarrow)
                             Text(
                               _userRole,
                               style: TextStyle(
-                                fontSize: isNarrow ? 9 : 12,
+                                fontSize: isInternalNarrow ? 9 : 12,
                                 color: Colors.grey,
                               ),
                             ),
                         ],
                       ),
-                      SizedBox(width: isNarrow ? 4 : 8),
+                      SizedBox(width: isInternalNarrow ? 4 : 8),
                     ],
                     IconButton(
                       onPressed: _showUserMenu,
                       icon: Icon(
                         Icons.arrow_drop_down,
                         color: Colors.grey,
-                        size: isNarrow ? 20 : 24,
+                        size: isInternalNarrow ? 20 : 24,
                       ),
                       padding: EdgeInsets.zero,
                       constraints: const BoxConstraints(),

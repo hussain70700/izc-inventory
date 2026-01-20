@@ -321,6 +321,7 @@ class _UsersPageState extends State<UsersPage> {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
+              backgroundColor: Colors.white,
               title: const Text('Add New User'),
               content: SizedBox(
                 width: 450,
@@ -666,6 +667,7 @@ class _UsersPageState extends State<UsersPage> {
         return StatefulBuilder(
           builder: (builderContext, setDialogState) {
             return AlertDialog(
+              backgroundColor: Colors.white,
               title: const Text('Edit User'),
               content: isLoading
                   ? const SizedBox(
@@ -782,6 +784,9 @@ class _UsersPageState extends State<UsersPage> {
                   child: const Text('Cancel'),
                 ),
                 ElevatedButton(
+                  style: ButtonStyle(
+                    backgroundColor: MaterialStateProperty.all<Color>(Color(0xffFE691E)),
+                  ),
                   onPressed: () async {
                     if (usernameController.text.isEmpty ||
                         emailController.text.isEmpty ||
@@ -851,7 +856,7 @@ class _UsersPageState extends State<UsersPage> {
                       }
                     }
                   },
-                  child: const Text('Update'),
+                  child: const Text('Update',style: TextStyle(color: Colors.white),),
                 ),
               ],
             );
@@ -885,6 +890,7 @@ class _UsersPageState extends State<UsersPage> {
         return StatefulBuilder(
           builder: (builderContext, setDialogState) {
             return AlertDialog(
+              backgroundColor: Colors.white,
               title: const Text('Change Password'),
               content: isLoading
                   ? const SizedBox(
@@ -954,6 +960,10 @@ class _UsersPageState extends State<UsersPage> {
                   child: const Text('Cancel'),
                 ),
                 ElevatedButton(
+
+                  style: ButtonStyle(
+                    backgroundColor: MaterialStateProperty.all<Color>(Color(0xffFE691E)),
+                  ),
                   onPressed: () async {
                     // Validation
                     if (newPasswordController.text.isEmpty) {
@@ -1051,7 +1061,7 @@ class _UsersPageState extends State<UsersPage> {
                       }
                     }
                   },
-                  child: const Text('Change Password'),
+                  child: const Text('Change Password',style: TextStyle(color: Colors.white),),
                 ),
               ],
             );
@@ -1074,6 +1084,7 @@ class _UsersPageState extends State<UsersPage> {
     showDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
+        backgroundColor: Colors.white,
         title: const Text('Delete User'),
         content: Text('Are you sure you want to delete ${user.username}?'),
         actions: [
@@ -1121,7 +1132,7 @@ class _UsersPageState extends State<UsersPage> {
                 }
               }
             },
-            child: const Text('Delete'),
+            child: const Text('Delete',style: TextStyle(color: Colors.white),),
           ),
         ],
       ),
@@ -1144,6 +1155,7 @@ class _UsersPageState extends State<UsersPage> {
     return Scaffold(
       backgroundColor: const Color(0xffF5F6FA),
       appBar: AppBar(
+        automaticallyImplyLeading: false,
         elevation: 0,
         backgroundColor: Colors.white,
         title: Column(
@@ -1191,6 +1203,7 @@ class _UsersPageState extends State<UsersPage> {
           : Padding(
         padding: const EdgeInsets.all(16),
         child: Card(
+          color: Colors.white,
           elevation: 0,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
@@ -1233,9 +1246,7 @@ class _UsersPageState extends State<UsersPage> {
                         items: const [
                           DropdownMenuItem(value: "all", child: Text(
                               "All Roles")),
-                          DropdownMenuItem(value: "admin", child: Text(
-                              "Admin")),
-                          DropdownMenuItem(value: "manager", child: Text(
+                           DropdownMenuItem(value: "manager", child: Text(
                               "Manager")),
                           DropdownMenuItem(value: "user", child: Text("User")),
                         ],
@@ -1315,26 +1326,25 @@ class _UsersPageState extends State<UsersPage> {
       child: Row(
         children: const [
           Expanded(flex: 2, child: Text("USERNAME", style: textStyle)),
-          Expanded(flex: 2, child: Align(
-              alignment: Alignment(-1.8, 10),
-              child: Text("Id card number", style: textStyle))),
-          Expanded(flex: 2, child: Align(
-              alignment: Alignment(-0.5, 10),
+          Expanded(flex: 2, child: Align( // Adjusted flex from 2 to 2 (was correct)
+              alignment: Alignment.centerLeft, // Center align text in header
+              child: Text("ID CARD NUMBER", style: textStyle))),
+          Expanded(flex: 2, child: Align( // Adjusted flex from 2 to 2 (was correct)
+              alignment: Alignment(0.1, 0),
               child: Text("ROLE", style: textStyle))),
-          Expanded(flex: 1, child: Align(
-              alignment: Alignment(-1, 10),
+          Expanded(flex: 1, child: Align( // Adjusted flex from 1 to 1 (was correct)
+              alignment: Alignment(0.1, 0),
               child: Text("STATUS", style: textStyle))),
-          Expanded(flex: 1, child: Align(
-              alignment: Alignment(-1.2, 10),
+          Expanded(flex: 2, child: Align( // Adjusted flex from 1 to 2
+              alignment: Alignment.centerRight,
               child: Text("LAST LOGIN", style: textStyle))),
-          Expanded(flex: 2, child: Align(
-              alignment: Alignment(0, 10),
+          Expanded(flex: 3, child: Align( // Adjusted flex from 2 to 3 to give more space for buttons
+              alignment: Alignment(0.1, 0),
               child: Text("ACTIONS", style: textStyle))),
         ],
       ),
     );
   }
-
   Widget _buildTableRow(User user) {
     const textStyle = TextStyle(fontSize: 13, color: Colors.black87);
 
@@ -1346,12 +1356,12 @@ class _UsersPageState extends State<UsersPage> {
           bottom: BorderSide(color: Colors.grey.shade200),
         ),
       ),
-      child: Row(
+      child: Row( // This is the Row at line 1402
         children: [
           Expanded(flex: 2, child: Text(user.username, style: textStyle)),
-          Expanded(flex: 3, child: Text(user.idCardNumber, style: textStyle)),
+          Expanded(flex: 2, child: Text(user.idCardNumber, style: textStyle)), // Adjusted flex from 3 to 2
           Expanded(
-            flex: 2,
+            flex: 2, // Adjusted flex from 2 to 2 (was correct)
             child: Padding(
               padding: const EdgeInsets.only(left: 0),
               child: Chip(
@@ -1366,7 +1376,7 @@ class _UsersPageState extends State<UsersPage> {
             ),
           ),
           Expanded(
-            flex: 2,
+            flex: 1, // Adjusted flex from 2 to 1
             child: Padding(
               padding: const EdgeInsets.only(left: 0),
               child: Chip(
@@ -1384,12 +1394,14 @@ class _UsersPageState extends State<UsersPage> {
               ),
             ),
           ),
-          Expanded(flex: 2,
-              child: Text(_formatLastLogin(user.lastLogin), style: textStyle)),
+          Expanded(flex: 2, // Adjusted flex from 2 to 2 (was correct)
+              child: Align(
+                  alignment: Alignment(1, 0),
+                  child: Text(_formatLastLogin(user.lastLogin), style: textStyle))),
           Expanded(
-            flex: 2,
+            flex: 3, // Adjusted flex from 2 to 3 to give more space for buttons
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.values[2],
               children: [
                 if (_isAdmin()) ...[
                   IconButton(
@@ -1417,5 +1429,4 @@ class _UsersPageState extends State<UsersPage> {
         ],
       ),
     );
-  }
-}
+  }}

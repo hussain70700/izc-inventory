@@ -25,7 +25,7 @@ class SidebarWidget extends StatelessWidget {
             children: [
               // Logo section - fixed height
               SizedBox(
-                height: isNarrow ? 60 : 75,
+                height: isNarrow ? 65 : 82,
                 width: double.infinity,
                 child: Stack(
                   children: [

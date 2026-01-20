@@ -33,7 +33,9 @@ class _InventoryPageState extends State<InventoryPage> {
   int _currentPage = 1;
   final int _itemsPerPage = 4;
   final GlobalKey _filterButtonKey = GlobalKey();
-
+// Search functionality
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
   // Stats
   double _totalValue = 0.0;
   int _lowStockCount = 0;
@@ -43,8 +45,20 @@ class _InventoryPageState extends State<InventoryPage> {
   void initState() {
     super.initState();
     _initializeData();
-  }
 
+    // Add listener for search
+    _searchController.addListener(() {
+      setState(() {
+        _searchQuery = _searchController.text.toLowerCase().trim();
+        _currentPage = 1; // Reset to first page when searching
+      });
+    });
+  }
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
   // Initialize all data
   Future<void> _initializeData() async {
     _loadUserSession();
@@ -129,18 +143,40 @@ class _InventoryPageState extends State<InventoryPage> {
 
   }
 
-  // Filtered products based on active filter
+// Search products by name or SKU
+  List<Product> _searchProducts(List<Product> products) {
+    if (_searchQuery.isEmpty) {
+      return products;
+    }
+
+    return products.where((product) {
+      final nameLower = product.name.toLowerCase();
+      final skuLower = product.sku.toLowerCase();
+      return nameLower.contains(_searchQuery) || skuLower.contains(_searchQuery);
+    }).toList();
+  }
+
+// Filtered products based on active filter AND search
   List<Product> get _filteredProducts {
+    List<Product> filtered;
+
+    // Apply status filter first
     switch (_activeFilter) {
       case 'Out of stock':
-        return _allProducts.where((p) => p.isOutOfStock).toList();
+        filtered = _allProducts.where((p) => p.isOutOfStock).toList();
+        break;
       case 'Active products':
-        return _allProducts.where((p) => p.isActive).toList();
+        filtered = _allProducts.where((p) => p.isActive).toList();
+        break;
       case 'Inactive products':
-        return _allProducts.where((p) => !p.isActive).toList();
+        filtered = _allProducts.where((p) => !p.isActive).toList();
+        break;
       default:
-        return _allProducts;
+        filtered = _allProducts;
     }
+
+    // Then apply search filter
+    return _searchProducts(filtered);
   }
 
   // Pagination calculations
@@ -272,6 +308,7 @@ class _InventoryPageState extends State<InventoryPage> {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
+              backgroundColor: Colors.white,
               title: const Text('Add Product'),
               content: SingleChildScrollView(
                 child: Column(
@@ -417,6 +454,7 @@ class _InventoryPageState extends State<InventoryPage> {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
+              backgroundColor: Colors.white,
               title: const Text('Edit Product'),
               content: SingleChildScrollView(
                 child: Column(
@@ -553,6 +591,7 @@ class _InventoryPageState extends State<InventoryPage> {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
+              backgroundColor: Colors.white,
               title: const Text('Delete Product'),
               content: Text('Are you sure you want to delete "${product
                   .name}"?\n\nThis action cannot be undone.'),
@@ -619,6 +658,7 @@ class _InventoryPageState extends State<InventoryPage> {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
+              backgroundColor: Colors.white,
               title: Text('Restock ${product.name}'),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -697,7 +737,98 @@ class _InventoryPageState extends State<InventoryPage> {
       },
     );
   }
+  void _showAllHistoryDialog() {
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          child: Container(
+            width: MediaQuery.of(context).size.width * 0.9,
+            height: MediaQuery.of(context).size.height * 0.8,
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      "Complete Stock History",
+                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(dialogContext),
+                    ),
+                  ],
+                ),
+                const Divider(height: 24),
 
+                // History List
+                Expanded(
+                  child: FutureBuilder<List<StockHistory>>(
+                    future: _supabaseService.fetchStockHistory(limit: 100),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(
+                          child: CircularProgressIndicator(
+                            color: Color(0xffFE691E),
+                          ),
+                        );
+                      }
+
+                      if (snapshot.hasError) {
+                        return Center(
+                          child: Text(
+                            'Error loading history: ${snapshot.error}',
+                            style: const TextStyle(color: Colors.red),
+                          ),
+                        );
+                      }
+
+                      final allHistory = snapshot.data ?? [];
+
+                      if (allHistory.isEmpty) {
+                        return const Center(
+                          child: Text(
+                            'No stock history available',
+                            style: TextStyle(color: Colors.grey),
+                          ),
+                        );
+                      }
+
+                      return ListView.separated(
+                        itemCount: allHistory.length,
+                        itemBuilder: (context, index) {
+                          final history = allHistory[index];
+                          return _buildHistoryLogRow(history);
+                        },
+                        separatorBuilder: (context, index) => const Divider(height: 1),
+                      );
+                    },
+                  ),
+                ),
+
+                // Footer
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(dialogContext),
+                      child: const Text('Close'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -783,16 +914,18 @@ class _InventoryPageState extends State<InventoryPage> {
                             _buildTableHeader(isMobile),
                             const Divider(height: 1),
                             Expanded(
-                              child: _filteredProducts.isEmpty
-                                  ? Center(
-                                child: Text(
-                                  'No products found',
-                                  style: TextStyle(
-                                    color: Colors.grey.shade600,
-                                    fontSize: 16,
+                                child: _filteredProducts.isEmpty
+                                    ? Center(
+                                  child: Text(
+                                    _searchQuery.isNotEmpty
+                                        ? 'No products found matching "$_searchQuery"'
+                                        : 'No products found',
+                                    style: TextStyle(
+                                      color: Colors.grey.shade600,
+                                      fontSize: 16,
+                                    ),
                                   ),
-                                ),
-                              )
+                                )
                                   : (isMobile
                                   ? _buildMobileProductList()
                                   : ListView.separated(
@@ -841,29 +974,23 @@ class _InventoryPageState extends State<InventoryPage> {
               "Inventory Management",
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
-            if (_currentUserRole != null)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: _isAdmin ? Colors.orange.shade100 : Colors.blue.shade100,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  _currentUserRole!.toUpperCase(),
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                    color: _isAdmin ? Colors.orange.shade900 : Colors.blue.shade900,
-                  ),
-                ),
-              ),
+
           ],
         ),
         const SizedBox(height: 12),
         TextField(
+          controller: _searchController,
           decoration: InputDecoration(
             hintText: "Search products, SKU...",
             prefixIcon: const Icon(Icons.search),
+            suffixIcon: _searchQuery.isNotEmpty
+                ? IconButton(
+              icon: const Icon(Icons.clear),
+              onPressed: () {
+                _searchController.clear();
+              },
+            )
+                : null,
             filled: true,
             fillColor: Colors.white,
             border: OutlineInputBorder(
@@ -894,29 +1021,23 @@ class _InventoryPageState extends State<InventoryPage> {
         ),
         Row(
           children: [
-            if (_currentUserRole != null)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: _isAdmin ? Colors.orange.shade100 : Colors.blue.shade100,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Text(
-                  _currentUserRole!.toUpperCase(),
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    color: _isAdmin ? Colors.orange.shade900 : Colors.blue.shade900,
-                  ),
-                ),
-              ),
+
             const SizedBox(width: 16),
             SizedBox(
               width: 250,
               child: TextField(
+                controller: _searchController,
                 decoration: InputDecoration(
                   hintText: "Search products, SKU...",
                   prefixIcon: const Icon(Icons.search),
+                  suffixIcon: _searchQuery.isNotEmpty
+                      ? IconButton(
+                    icon: const Icon(Icons.clear),
+                    onPressed: () {
+                      _searchController.clear();
+                    },
+                  )
+                      : null,
                   filled: true,
                   fillColor: Colors.white,
                   border: OutlineInputBorder(
@@ -1173,34 +1294,67 @@ class _InventoryPageState extends State<InventoryPage> {
 
   Widget _buildTableHeader(bool isMobile) {
     if (isMobile) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 12.0, horizontal: 8.0),
-        child: Text("PRODUCTS", style: TextStyle(
-            color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 8.0),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text("PRODUCTS", style: TextStyle(
+                color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
+            if (_searchQuery.isNotEmpty || _activeFilter != 'Active products')
+              Text(
+                '${_filteredProducts.length} result${_filteredProducts.length != 1 ? 's' : ''}',
+                style: TextStyle(
+                  color: Colors.grey.shade600,
+                  fontSize: 11,
+                ),
+              ),
+          ],
+        ),
       );
     }
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 16.0),
       child: Row(
-        children: const [
-          Expanded(flex: 3,
+        children: [
+          const Expanded(flex: 3,
               child: Text("PRODUCT",
                   style: TextStyle(color: Colors.grey, fontSize: 12))),
-          Expanded(flex: 2,
+          const Expanded(flex: 2,
               child: Text(
                   "SKU", style: TextStyle(color: Colors.grey, fontSize: 12))),
-          Expanded(child: Text(
+          const Expanded(child: Text(
               "STOCK", style: TextStyle(color: Colors.grey, fontSize: 12))),
-          Expanded(flex: 2,
+          const Expanded(flex: 2,
               child: Text(
                   "PRICE", style: TextStyle(color: Colors.grey, fontSize: 12))),
-          Expanded(flex: 2,
+          const Expanded(flex: 2,
               child: Text("STATUS",
                   style: TextStyle(color: Colors.grey, fontSize: 12))),
-          Expanded(flex: 2,
-              child: Text(
-                  "ACTIONS", style: TextStyle(color: Colors.grey, fontSize: 12),
-                  textAlign: TextAlign.center)),
+          Expanded(
+            flex: 2,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Text(
+                  "ACTIONS",
+                  style: TextStyle(color: Colors.grey, fontSize: 12),
+                ),
+                if (_searchQuery.isNotEmpty || _activeFilter != 'Active products')
+                  Padding(
+                    padding: const EdgeInsets.only(left: 8.0),
+                    child: Text(
+                      '(${_filteredProducts.length})',
+                      style: TextStyle(
+                        color: Colors.grey.shade600,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -1416,44 +1570,58 @@ class _InventoryPageState extends State<InventoryPage> {
     );
   }
 
-  Widget _buildPaginationControls() {
-    return Padding(
-      padding: const EdgeInsets.only(top: 16.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          IconButton(
-            icon: const Icon(Icons.chevron_left),
-            onPressed: _currentPage > 1 ? () {
-              setState(() => _currentPage--);
-            } : null,
-          ),
-          ...List.generate(_totalPages, (index) {
-            final pageNum = index + 1;
-            return TextButton(
-              onPressed: () {
-                setState(() => _currentPage = pageNum);
-              },
-              style: TextButton.styleFrom(
-                backgroundColor: _currentPage == pageNum ? const Color(
-                    0xffFE691E) : Colors.transparent,
-                foregroundColor: _currentPage == pageNum ? Colors.white : Colors
-                    .black,
-                shape: const CircleBorder(),
-                minimumSize: const Size(40, 40),
-              ),
-              child: Text('$pageNum'),
-            );
-          }),
-          IconButton(
-            icon: const Icon(Icons.chevron_right),
-            onPressed: _currentPage < _totalPages ? () {
-              setState(() => _currentPage++);
-            } : null,
-          ),
-        ],
+    Widget _buildPaginationControls() {
+      return Padding(
+          padding: const EdgeInsets.only(top: 16.0),
+          child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+          // Results info
+          Text(
+          'Showing ${_paginatedProducts.isEmpty ? 0 : ((_currentPage - 1) * _itemsPerPage) + 1}-${((_currentPage - 1) * _itemsPerPage) + _paginatedProducts.length} of ${_filteredProducts.length}',
+      style: TextStyle(
+      color: Colors.grey.shade600,
+      fontSize: 12,
       ),
-    );
+      ),
+      // Pagination buttons
+                // Pagination buttons
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.chevron_left),
+                      onPressed: _currentPage > 1 ? () {
+                        setState(() => _currentPage--);
+                      } : null,
+                    ),
+                    ...List.generate(_totalPages, (index) {
+                      final pageNum = index + 1;
+                      return TextButton(
+                        onPressed: () {
+                          setState(() => _currentPage = pageNum);
+                        },
+                        style: TextButton.styleFrom(
+                          backgroundColor: _currentPage == pageNum ? const Color(
+                              0xffFE691E) : Colors.transparent,
+                          foregroundColor: _currentPage == pageNum ? Colors.white : Colors
+                              .black,
+                          shape: const CircleBorder(),
+                          minimumSize: const Size(40, 40),
+                        ),
+                        child: Text('$pageNum'),
+                      );
+                    }),
+                    IconButton(
+                      icon: const Icon(Icons.chevron_right),
+                      onPressed: _currentPage < _totalPages ? () {
+                        setState(() => _currentPage++);
+                      } : null,
+                    ),
+                  ],
+                ),
+    ])
+      );
   }
 
   Widget _buildStockHistoryCard(bool isMobile) {
@@ -1483,7 +1651,7 @@ class _InventoryPageState extends State<InventoryPage> {
               ),
               OutlinedButton(
                 onPressed: () {
-                  /* TODO: Implement View All History */
+                  _showAllHistoryDialog;
                 },
                 style: OutlinedButton.styleFrom(
                   foregroundColor: Colors.grey.shade700,

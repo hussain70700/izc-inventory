@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:izc_inventory/dashboard/receipt_page.dart';
 import '../models/cart_item_model.dart';
 import '../models/customer_model.dart';
 import '../models/product_model.dart';
@@ -220,6 +221,7 @@ class _SalesScreenState extends State<SalesScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
         title: const Text('Confirm Sale'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -254,7 +256,7 @@ class _SalesScreenState extends State<SalesScreen> {
     if (confirmed != true) return;
 
     try {
-      await _supabaseService.createSale(
+      final saleId = await _supabaseService.createSale(  // ✅ Capture the return value
         customerId: _selectedCustomer!.id!,
         items: cart,
         subtotal: subtotal,
@@ -271,6 +273,16 @@ class _SalesScreenState extends State<SalesScreen> {
         _clearCustomerSelection();
         _selectedPaymentMethod = null;
       });
+
+      // Now navigate with the saleId
+      if (saleId != null) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ReceiptScreen(saleId: saleId),
+          ),
+        );
+      }
     } catch (e) {
       _showError('Failed to process sale: $e');
     }
@@ -670,23 +682,7 @@ class _SalesScreenState extends State<SalesScreen> {
             child: const Text('Add Note', style: TextStyle(color: Colors.black)),
           ),
         ),
-        const SizedBox(width: 8),
-        Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: Colors.grey.shade400, width: 1),
-          ),
-          child: TextButton(
-            style: ButtonStyle(
-              splashFactory: NoSplash.splashFactory,
-              overlayColor: MaterialStateProperty.all(Colors.transparent),
-              foregroundColor: MaterialStateProperty.all(Colors.black),
-            ),
-            onPressed: () {},
-            child: const Text('Discount Item', style: TextStyle(color: Colors.black)),
-          ),
-        ),
+
         const Spacer(),
         Container(
           decoration: BoxDecoration(

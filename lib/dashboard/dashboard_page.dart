@@ -339,7 +339,18 @@ class _DashboardPageState extends State<DashboardPage> {
     ];
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
+      decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+      BoxShadow(
+      color: Colors.grey.withOpacity(0.4),
+      spreadRadius: 4,
+      blurRadius: 8,
+      offset: const Offset(0, 5),
+    ),
+    ],
+      ),
       child: Column(
         children: [
           Row(

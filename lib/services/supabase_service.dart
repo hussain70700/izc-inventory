@@ -3,6 +3,8 @@
 // lib/services/supabase_service.dart
 // ============================================
 
+import 'package:izc_inventory/dashboard/receipt_page.dart';
+import 'package:izc_inventory/models/sales_model.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/cart_item_model.dart';
 import '../models/customer_model.dart';
@@ -196,17 +198,46 @@ class SupabaseService {
   /// Fetch stock history with optional limit
   Future<List<StockHistory>> fetchStockHistory({int limit = 10}) async {
     try {
+      print('🔍 Fetching from stock_history table...');
+
       final response = await _supabase
-          .from('stock_history')
-          .select()
+          .from('stock_history')  // ✅ Make sure this says 'stock_history' not 'products'
+          .select('*, products(name)')
           .order('created_at', ascending: false)
           .limit(limit);
 
-      return (response as List)
-          .map((json) => StockHistory.fromJson(json))
-          .toList();
+      print('📦 Raw response from stock_history: $response');
+      print('📦 Number of records: ${(response as List).length}');
+
+      if ((response as List).isEmpty) {
+        print('⚠️ No records in stock_history table');
+        return [];
+      }
+
+      final historyList = (response as List).map((item) {
+        print('Processing history item: $item');
+
+        String productName = 'Unknown';
+        if (item['products'] != null) {
+          productName = item['products']['name'] as String;
+        }
+
+        return StockHistory(
+          id: item['id'] as String,
+          productId: item['product_id'] as String,
+          productName: productName,
+          oldStock: item['old_stock'] as int?,
+          newStock: item['new_stock'] as int,
+          reason: item['reason'] as String? ?? 'No reason',
+          createdAt: DateTime.parse(item['created_at'] as String),
+        );
+      }).toList();
+
+      print('✅ Successfully converted ${historyList.length} history items');
+      return historyList;
+
     } catch (e) {
-      print('Error fetching stock history: $e');
+      print('❌ Error fetching stock_history: $e');
       return [];
     }
   }
@@ -245,12 +276,29 @@ class SupabaseService {
 
   /// Listen to stock history changes in real-time
   Stream<List<StockHistory>> watchStockHistory({int limit = 10}) {
+    print('👀 Setting up stock_history stream...');
+
     return _supabase
-        .from('stock_history')
+        .from('stock_history')  // ✅ Make sure this says 'stock_history'
         .stream(primaryKey: ['id'])
         .order('created_at', ascending: false)
         .limit(limit)
-        .map((data) => data.map((json) => StockHistory.fromJson(json)).toList());
+        .map((data) {
+      print('📡 Stream update from stock_history: ${data.length} items');
+
+      return data.map((item) {
+        // We can't join in streams, so fetch product name separately
+        return StockHistory(
+          id: item['id'] as String,
+          productId: item['product_id'] as String,
+          productName: 'Product', // Placeholder since streams don't support joins
+          oldStock: item['old_stock'] as int?,
+          newStock: item['new_stock'] as int,
+          reason: item['reason'] as String? ?? 'Stock updated',
+          createdAt: DateTime.parse(item['created_at'] as String),
+        );
+      }).toList();
+    });
   }
 
   // ============================================
@@ -408,7 +456,7 @@ class SupabaseService {
       final date = entry.createdAt.toIso8601String();
 
       buffer.writeln(
-          '"${entry.productName}",${entry.oldStock ?? 'N/A'},${entry.newStock},${entry.changeAmount},"${entry.reason}","$type","$date"');
+          '"${entry.productName}",${entry.oldStock ?? 'N/A'},${entry.newStock},,"${entry.reason}","$type","$date"');
     }
 
     return buffer.toString();
@@ -579,16 +627,7 @@ class SupabaseService {
   // ============================================
 
   /// Create a sale and update inventory
-  Future<String> createSale({
-    required String customerId,
-    required List<CartItem> items,
-    required double subtotal,
-    required double discount,
-    required double tax,
-    required double total,
-    required String paymentMethod,
-    String? notes,
-  }) async {
+  Future<String> createSale({required String customerId, required List<CartItem> items, required double subtotal, required double discount, required double tax, required double total, required String paymentMethod, String? notes,}) async {
     try {
       print('Creating sale for customer: $customerId');
       print('Items count: ${items.length}');
@@ -879,4 +918,42 @@ class SupabaseService {
 
   /// Get Supabase client (for advanced usage)
   SupabaseClient get client => _supabase;
+
+// Add these methods to your SupabaseService class
+
+// Get sale by ID
+// Add these methods INSIDE your SupabaseService class
+// Remove the duplicate createSale method at the bottom of your file
+
+// Get sale by ID
+Future<Sale> getSaleById(String saleId) async {
+  try {
+    final response = await _supabase  // ✅ Use _supabase
+        .from('sales')
+        .select()
+        .eq('id', saleId)
+        .single();
+
+    return Sale.fromJson(response);
+  } catch (e) {
+    throw Exception('Failed to fetch sale: $e');
+  }
+}
+
+// Get detailed sale items from the view
+Future<List<DetailedSaleItem>> getDetailedSaleItems(String saleId) async {
+  try {
+    final response = await _supabase  // ✅ Use _supabase
+        .from('detailed_sale_items')
+        .select()
+        .eq('sale_id', saleId);
+
+    return (response as List)
+        .map((item) => DetailedSaleItem.fromJson(item))
+        .toList();
+  } catch (e) {
+    throw Exception('Failed to fetch sale items: $e');
+  }
+}
+
 }

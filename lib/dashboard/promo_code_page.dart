@@ -93,6 +93,7 @@ class _PromoCodePageState extends State<PromoCodePage> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
         title: const Text('Delete Promo Code'),
         content: const Text('Are you sure you want to delete this promo code?'),
         actions: [
@@ -514,6 +515,8 @@ class _AddEditPromoDialogState extends State<AddEditPromoDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
+      backgroundColor: Colors.white,
+
       title: Text(widget.promoCode == null ? 'Add Promo Code' : 'Edit Promo Code'),
       content: Form(
         key: _formKey,
