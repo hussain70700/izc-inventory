@@ -17,7 +17,7 @@ class DashboardShell extends StatefulWidget {
 
 class _DashboardShellState extends State<DashboardShell> {
   // A simple way to manage the selected index, just like a BottomNavigationBar.
-  int _selectedIndex = 5;
+  int _selectedIndex = 0;
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   // Get user info from session
@@ -30,9 +30,10 @@ class _DashboardShellState extends State<DashboardShell> {
     DashboardPage(),
     SalesScreen(),
     InventoryPage(),
+    ReportsPage(),
     UsersPage(),
     PromoCodePage(),
-    ReportsPage(),
+
     // Add other main pages here as you create them
     // e.g. TrackingPage(), CustomersPage(), etc.
   ];
@@ -43,11 +44,11 @@ class _DashboardShellState extends State<DashboardShell> {
     "Dashboard": 0,
     "Sales": 1,
     "Inventory": 2,
-    "Reports": 5,
+    "Reports": 3,
     "Tracking": 0, // Placeholder
-    "Staff": 3,
+    "Staff": 4,
     "Settings": 0,
-    "Promo Codes": 4,
+    "Promo Codes": 5,
   };
 
   // This is used for the header title and sidebar selection.

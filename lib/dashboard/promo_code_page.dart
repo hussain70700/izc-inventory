@@ -146,55 +146,63 @@ class _PromoCodePageState extends State<PromoCodePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.grey[50],
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xffFE691E)))
-          : Column(
+      body: _isLoading ? const Center(child: CircularProgressIndicator(color: Color(0xffFE691E))) :
+      Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Header
           Container(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.all(5),
             decoration: BoxDecoration(
               color: Colors.white,
               border: Border(bottom: BorderSide(color: Colors.grey[300]!)),
+           boxShadow: [BoxShadow(
+               color: Colors.grey.withOpacity(0.4), // Often good to add opacity to grey shadows
+               spreadRadius: 0, // Set to 0 to prevent all-around spread
+               blurRadius: 6,   // Adjusted blur for a softer look, but 4 is fine if preferred
+               offset: Offset(0, 4) // X-offset is 0, Y-offset is positive to push shadow downwards
+           )]
             ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Promo Codes',
-                      style: TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.grey[800],
+            child: Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Promo Codes',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.grey[800],
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Manage discount promo codes',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.grey[600],
+                      const SizedBox(height: 4),
+                      Text(
+                        'Manage discount promo codes',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey[600],
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-                ElevatedButton.icon(
-                  onPressed: () => _showAddEditDialog(),
-                  icon: const Icon(Icons.add, color: Colors.white),
-                  label: const Text('Add Promo Code', style: TextStyle(color: Colors.white)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xffFE691E),
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
+                    ],
+                  ),
+                  ElevatedButton.icon(
+                    onPressed: () => _showAddEditDialog(),
+                    icon: const Icon(Icons.add, color: Colors.white),
+                    label: const Text('Add Promo Code', style: TextStyle(color: Colors.white)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xffFE691E),
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
 

@@ -1157,6 +1157,7 @@ class _UsersPageState extends State<UsersPage> {
       appBar: AppBar(
         automaticallyImplyLeading: false,
         elevation: 0,
+        surfaceTintColor: WidgetStateColor.transparent,
         backgroundColor: Colors.white,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1197,14 +1198,29 @@ class _UsersPageState extends State<UsersPage> {
               ),
             ),
         ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(4.0), // Height for the shadow container
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.white, // Ensure white background continues under shadow
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.grey.withOpacity(0.2), // Shadow color and opacity
+                  spreadRadius: 4, // No spread for a clean bottom shadow
+                  blurRadius: 6,   // Softness of the shadow
+                  offset: Offset(0, 4), // Shifts shadow 4 pixels downwards
+                ),
+              ],
+            ),
+            height: 2.0, // A small height for the container, just enough for shadow to render clearly
+          ),
+        ),
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : Padding(
+      body: _isLoading ? const Center(child: CircularProgressIndicator()) : Padding(
         padding: const EdgeInsets.all(16),
         child: Card(
           color: Colors.white,
-          elevation: 0,
+          elevation: 4,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
             side: BorderSide(color: Colors.grey.shade200),

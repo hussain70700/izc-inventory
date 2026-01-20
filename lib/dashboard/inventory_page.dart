@@ -8,6 +8,10 @@ import 'package:flutter/services.dart';
 import '../models/product_model.dart';
 import '../services/supabase_service.dart';
 import '../services/session_service.dart';
+import 'package:excel/excel.dart';
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
+import 'package:open_file/open_file.dart';
 
 class InventoryPage extends StatefulWidget {
   const InventoryPage({super.key});
@@ -576,6 +580,97 @@ class _InventoryPageState extends State<InventoryPage> {
       },
     );
   }
+  Future<void> _exportInventoryToExcel() async {
+    try {
+      // Show loading indicator
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(color: Color(0xffFE691E)),
+        ),
+      );
+
+      // Create a new Excel document
+      var excel = Excel.createExcel();
+
+      // Get the default sheet and rename it
+      Sheet sheetObject = excel['Sheet1'];
+      excel.rename('Sheet1', 'Inventory');
+
+      // Add headers with styling
+      var headers = ['Product Name', 'SKU', 'Stock', 'Price', 'Status', 'Total Value'];
+      for (var i = 0; i < headers.length; i++) {
+        var cell = sheetObject.cell(CellIndex.indexByColumnRow(columnIndex: i, rowIndex: 0));
+        cell.value = TextCellValue(headers[i]);
+        cell.cellStyle = CellStyle(
+          bold: true,
+          backgroundColorHex: ExcelColor.fromHexString('#FE691E'),
+          fontColorHex: ExcelColor.white,
+        );
+      }
+
+      // Add data rows
+      for (var i = 0; i < _allProducts.length; i++) {
+        final product = _allProducts[i];
+        final rowIndex = i + 1;
+
+        sheetObject.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: rowIndex))
+            .value = TextCellValue(product.name);
+        sheetObject.cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: rowIndex))
+            .value = TextCellValue(product.sku);
+        sheetObject.cell(CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: rowIndex))
+            .value = IntCellValue(product.stock);
+        sheetObject.cell(CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: rowIndex))
+            .value = DoubleCellValue(product.price);
+
+        String status = product.isOutOfStock ? "Out of Stock" : (product.isActive ? "Active" : "Inactive");
+        sheetObject.cell(CellIndex.indexByColumnRow(columnIndex: 4, rowIndex: rowIndex))
+            .value = TextCellValue(status);
+
+        sheetObject.cell(CellIndex.indexByColumnRow(columnIndex: 5, rowIndex: rowIndex))
+            .value = DoubleCellValue(product.price * product.stock);
+      }
+
+      // Auto-fit columns (set reasonable widths)
+      for (var i = 0; i < headers.length; i++) {
+        sheetObject.setColumnWidth(i, 20);
+      }
+
+      // Save the file
+      var fileBytes = excel.save();
+
+      if (fileBytes != null) {
+        final directory = await getApplicationDocumentsDirectory();
+        final timestamp = DateTime.now().millisecondsSinceEpoch;
+        final filePath = '${directory.path}/inventory_export_$timestamp.xlsx';
+
+        File file = File(filePath);
+        await file.writeAsBytes(fileBytes);
+
+        // Close loading dialog
+        if (mounted) {
+          Navigator.pop(context);
+
+          _showSuccess('Inventory exported to:\n${file.path}');
+
+          // Optionally open the file
+          await OpenFile.open(filePath);
+        }
+      } else {
+        if (mounted) {
+          Navigator.pop(context);
+          _showError('Failed to generate Excel file');
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context);
+        _showError('Failed to export: $e');
+      }
+      print('Export error: $e');
+    }
+  }
 
   // Delete Product Dialog
   void _showDeleteProductDialog(Product product) {
@@ -742,6 +837,7 @@ class _InventoryPageState extends State<InventoryPage> {
       context: context,
       builder: (dialogContext) {
         return Dialog(
+          backgroundColor: Colors.white,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           child: Container(
             width: MediaQuery.of(context).size.width * 0.9,
@@ -849,109 +945,140 @@ class _InventoryPageState extends State<InventoryPage> {
         final double horizontalPadding = isMobile ? 12.0 : (isNarrow
             ? 16.0
             : 24.0);
+        // Define vertical padding for the content area
+        final double contentVerticalPadding = isMobile ? 16.0 : 24.0;
+
 
         return Scaffold(
           backgroundColor: const Color(0xffF6F7FB),
-          body: RefreshIndicator(
-            onRefresh: _loadData,
-            child: SingleChildScrollView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              child: Padding(
-                padding: EdgeInsets.all(horizontalPadding),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // HEADER
-                    _buildHeader(isMobile),
-                    SizedBox(height: isMobile ? 16 : 24),
-
-                    // STATS
-                    _buildStatsRow(isMobile),
-                    SizedBox(height: isMobile ? 16 : 24),
-
-                    // MENU BAR
-                    Container(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: isMobile ? 12 : 24,
-                        vertical: isMobile ? 12 : 16,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.grey.withOpacity(0.1),
-                            spreadRadius: 2,
-                            blurRadius: 8,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: _buildMenuBar(isMobile),
+          body: Column( // Main Column for sticky header and scrollable content
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // --- STICKY HEADER CONTAINER ---
+              Container(
+                width: double.infinity, // Ensures the header container spans the full width
+                padding: EdgeInsets.symmetric(
+                  horizontal: horizontalPadding,
+                  vertical: isMobile ? 16 : 24, // Vertical padding inside the sticky header
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white, // White background for the sticky header
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.grey.withOpacity(0.2), // Subtle shadow color
+                      spreadRadius: 0, // No spread, shadow only on bottom
+                      blurRadius: 6,   // Softness of the shadow
+                      offset: Offset(0, 4), // Shifts shadow 4 pixels downwards
                     ),
-                    SizedBox(height: isMobile ? 16 : 24),
-
-                    // TABLE AREA
-                    SizedBox(
-                      height: isMobile ? 350 : (isNarrow ? 400 : 440),
-                      child: Container(
-                        padding: EdgeInsets.all(isMobile ? 12 : 24),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(12),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.grey.withOpacity(0.1),
-                              spreadRadius: 2,
-                              blurRadius: 8,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _buildTableHeader(isMobile),
-                            const Divider(height: 1),
-                            Expanded(
-                                child: _filteredProducts.isEmpty
-                                    ? Center(
-                                  child: Text(
-                                    _searchQuery.isNotEmpty
-                                        ? 'No products found matching "$_searchQuery"'
-                                        : 'No products found',
-                                    style: TextStyle(
-                                      color: Colors.grey.shade600,
-                                      fontSize: 16,
-                                    ),
-                                  ),
-                                )
-                                  : (isMobile
-                                  ? _buildMobileProductList()
-                                  : ListView.separated(
-                                itemCount: _paginatedProducts.length,
-                                itemBuilder: (context, index) {
-                                  final product = _paginatedProducts[index];
-                                  return _buildTableRow(product, isMobile);
-                                },
-                                separatorBuilder: (context, index) =>
-                                const Divider(height: 1),
-                              )),
-                            ),
-                            const Divider(height: 1),
-                            _buildPaginationControls(),
-                          ],
-                        ),
-                      ),
-                    ),
-
-                    SizedBox(height: isMobile ? 16 : 24),
-                    // Stock History Card
-                    _buildStockHistoryCard(isMobile),
                   ],
                 ),
+                child: _buildHeader(isMobile), // The actual header content
               ),
-            ),
+
+              // --- SCROLLABLE BODY ---
+              Expanded( // Takes up all remaining vertical space
+                child: RefreshIndicator(
+                  onRefresh: _loadData,
+                  child: SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: contentVerticalPadding), // Padding for the scrollable content
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // NOTE: The _buildHeader(isMobile) and its SizedBox are REMOVED from here
+                          // as they are now part of the sticky header.
+
+                          // STATS
+                          _buildStatsRow(isMobile),
+                          SizedBox(height: isMobile ? 16 : 24),
+
+                          // MENU BAR
+                          Container(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: isMobile ? 12 : 24,
+                              vertical: isMobile ? 12 : 16,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(12),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.grey.withOpacity(0.1),
+                                  spreadRadius: 2,
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: _buildMenuBar(isMobile),
+                          ),
+                          SizedBox(height: isMobile ? 16 : 24),
+
+                          // TABLE AREA
+                          SizedBox(
+                            height: isMobile ? 350 : (isNarrow ? 400 : 440),
+                            child: Container(
+                              padding: EdgeInsets.all(isMobile ? 12 : 24),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(12),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.grey.withOpacity(0.1),
+                                    spreadRadius: 2,
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 4),
+                                  ),
+                                ],
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  _buildTableHeader(isMobile),
+                                  const Divider(height: 1),
+                                  Expanded(
+                                    child: _filteredProducts.isEmpty
+                                        ? Center(
+                                      child: Text(
+                                        _searchQuery.isNotEmpty
+                                            ? 'No products found matching "$_searchQuery"'
+                                            : 'No products found',
+                                        style: TextStyle(
+                                          color: Colors.grey.shade600,
+                                          fontSize: 16,
+                                        ),
+                                      ),
+                                    )
+                                        : (isMobile
+                                        ? _buildMobileProductList()
+                                        : ListView.separated(
+                                      itemCount: _paginatedProducts.length,
+                                      itemBuilder: (context, index) {
+                                        final product = _paginatedProducts[index];
+                                        return _buildTableRow(product, isMobile);
+                                      },
+                                      separatorBuilder: (context, index) =>
+                                      const Divider(height: 1),
+                                    )),
+                                  ),
+                                  const Divider(height: 1),
+                                  _buildPaginationControls(),
+                                ],
+                              ),
+                            ),
+                          ),
+
+                          SizedBox(height: isMobile ? 16 : 24),
+                          // Stock History Card
+                          _buildStockHistoryCard(isMobile),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         );
       },
@@ -992,7 +1119,7 @@ class _InventoryPageState extends State<InventoryPage> {
             )
                 : null,
             filled: true,
-            fillColor: Colors.white,
+            fillColor: Colors.grey.shade200,
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
               borderSide: BorderSide.none,
@@ -1026,6 +1153,7 @@ class _InventoryPageState extends State<InventoryPage> {
             SizedBox(
               width: 250,
               child: TextField(
+                style: TextStyle(),
                 controller: _searchController,
                 decoration: InputDecoration(
                   hintText: "Search products, SKU...",
@@ -1039,7 +1167,7 @@ class _InventoryPageState extends State<InventoryPage> {
                   )
                       : null,
                   filled: true,
-                  fillColor: Colors.white,
+                  fillColor: Colors.grey.shade200,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
                     borderSide: BorderSide.none,
@@ -1175,7 +1303,7 @@ class _InventoryPageState extends State<InventoryPage> {
             _buildActionButton(
               Icons.file_upload_outlined,
               "Export",
-              onPressed: _exportInventoryToCsv,
+              onPressed: _exportInventoryToExcel,
             ),
             ElevatedButton.icon(
               onPressed: _isAdmin ? _showAddProductDialog : () {
@@ -1219,7 +1347,7 @@ class _InventoryPageState extends State<InventoryPage> {
             _buildActionButton(
               Icons.file_upload_outlined,
               "Export",
-              onPressed: _exportInventoryToCsv,
+              onPressed: _exportInventoryToExcel,
             ),
             const SizedBox(width: 8),
             ElevatedButton.icon(
@@ -1650,9 +1778,9 @@ class _InventoryPageState extends State<InventoryPage> {
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
               OutlinedButton(
-                onPressed: () {
-                  _showAllHistoryDialog;
-                },
+                onPressed:
+                  _showAllHistoryDialog
+                ,
                 style: OutlinedButton.styleFrom(
                   foregroundColor: Colors.grey.shade700,
                   side: BorderSide(color: Colors.grey.shade300),

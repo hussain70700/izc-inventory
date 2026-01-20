@@ -63,18 +63,32 @@ class _DashboardPageState extends State<DashboardPage> {
     // Define dynamic padding based on screen width.
     final double horizontalPadding = isNarrow ? 16.0 : 24.0;
 
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 24.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // The top header row with title and buttons.
-          _buildResponsiveHeader(isNarrow),
-          const SizedBox(height: 24),
-          // The main content area that switches between Row and Column.
-          _buildResponsiveBody(isNarrow),
-        ],
-      ),
+    return Column( // Changed from Padding to Column to manage padding and the header separately
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container( // <--- NEW WRAPPER CONTAINER FOR THE HEADER
+          // Take full available width
+          padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 24.0), // Apply padding here
+          decoration: BoxDecoration(
+            color: Colors.white, // Ensure a white background for the header
+            boxShadow: [
+              BoxShadow(
+                color: Colors.grey.withOpacity(0.2), // Adjust opacity as desired
+                spreadRadius: 0, // No spread, keeps shadow tight to the bottom
+                blurRadius: 6,   // Softness of the shadow
+                offset: Offset(0, 4), // Shifts shadow 4 pixels down
+              )
+            ],
+          ),
+          child: _buildResponsiveHeader(isNarrow), // The actual responsive header content
+        ),
+        SizedBox(height: 24.0), // Keep spacing between header and body content
+        // The main content area that switches between Row and Column.
+        Padding(
+          padding: EdgeInsets.symmetric(horizontal: horizontalPadding), // Apply horizontal padding to body
+          child: _buildResponsiveBody(isNarrow),
+        ),
+      ],
     );
   }
 
