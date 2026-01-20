@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:izc_inventory/dashboard/dashboard_page.dart';
 import 'package:izc_inventory/dashboard/inventory_page.dart';
 import 'package:izc_inventory/dashboard/promo_code_page.dart';
+import 'package:izc_inventory/dashboard/reports_page.dart';
 import 'package:izc_inventory/dashboard/sales_page.dart';
 import 'package:izc_inventory/dashboard/user_page.dart';
 import 'package:izc_inventory/widgets/dashboard/sidebar_widget.dart';
@@ -30,6 +31,7 @@ class _DashboardShellState extends State<DashboardShell> {
     InventoryPage(),
     UsersPage(),
     PromoCodePage(),
+    ReportsPage(),
     // Add other main pages here as you create them
     // e.g. TrackingPage(), CustomersPage(), etc.
   ];
@@ -40,7 +42,7 @@ class _DashboardShellState extends State<DashboardShell> {
     "Dashboard": 0,
     "Sales": 1,
     "Inventory": 2,
-    "Reports": 0,
+    "Reports": 5,
     "Tracking": 0, // Placeholder
     "Staff": 3,
     "Settings": 0,

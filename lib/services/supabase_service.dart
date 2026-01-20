@@ -768,7 +768,21 @@ class SupabaseService {
       return 0.0;
     }
   }
+  Future<List<Map<String, dynamic>>> getSalesHistoryByDateRange({
+    required DateTime startDate,
+    required DateTime endDate,
+    int limit = 100,
+  }) async {
+    final response = await _supabase
+        .from('sales')
+        .select('*, customers(*)')
+        .gte('sale_date', startDate.toIso8601String())
+        .lte('sale_date', endDate.toIso8601String())
+        .order('sale_date', ascending: false)
+        .limit(limit);
 
+    return List<Map<String, dynamic>>.from(response as List);
+  }
   /// Get sales count today
   Future<int> getTodaySalesCount() async {
     try {
