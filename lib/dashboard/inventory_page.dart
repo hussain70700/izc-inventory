@@ -9,9 +9,7 @@ import '../models/product_model.dart';
 import '../services/supabase_service.dart';
 import '../services/session_service.dart';
 import 'package:excel/excel.dart';
-import 'dart:io';
-import 'package:path_provider/path_provider.dart';
-import 'package:open_file/open_file.dart';
+import '../utils/file_download.dart';
 
 class InventoryPage extends StatefulWidget {
   const InventoryPage({super.key});
@@ -216,16 +214,6 @@ class _InventoryPageState extends State<InventoryPage> {
         behavior: SnackBarBehavior.floating,
       ),
     );
-  }
-
-  // Export to CSV
-  void _exportInventoryToCsv() async {
-    final csvText = _supabaseService.generateProductsCSV(_allProducts);
-    await Clipboard.setData(ClipboardData(text: csvText));
-
-    if (mounted) {
-      _showSuccess('Inventory data copied to clipboard');
-    }
   }
 
   // Show filter menu
@@ -580,6 +568,25 @@ class _InventoryPageState extends State<InventoryPage> {
       },
     );
   }
+// Replace your _exportInventoryToExcel method with this one
+// Add this import at the top of your file:
+// import 'package:flutter/foundation.dart' show kIsWeb;
+// For web downloads, add: import 'dart:html' as html;
+
+// ============================================
+// COMPLETE SOLUTION FOR EXCEL EXPORT
+// ============================================
+
+// Step 1: Remove these imports from inventory_page.dart:
+// import 'package:flutter/foundation.dart';
+// import 'dart:io';
+// import 'package:path_provider/path_provider.dart';
+
+// Step 2: Keep this import in inventory_page.dart:
+// import '../utils/file_download.dart';
+
+// Step 3: Replace the _exportInventoryToExcel method with this:
+
   Future<void> _exportInventoryToExcel() async {
     try {
       // Show loading indicator
@@ -617,49 +624,51 @@ class _InventoryPageState extends State<InventoryPage> {
 
         sheetObject.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: rowIndex))
             .value = TextCellValue(product.name);
+
         sheetObject.cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: rowIndex))
             .value = TextCellValue(product.sku);
+
         sheetObject.cell(CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: rowIndex))
             .value = IntCellValue(product.stock);
+
         sheetObject.cell(CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: rowIndex))
             .value = DoubleCellValue(product.price);
 
-        String status = product.isOutOfStock ? "Out of Stock" : (product.isActive ? "Active" : "Inactive");
+        String status = product.isOutOfStock
+            ? "Out of Stock"
+            : (product.isActive ? "Active" : "Inactive");
+
         sheetObject.cell(CellIndex.indexByColumnRow(columnIndex: 4, rowIndex: rowIndex))
             .value = TextCellValue(status);
 
+        double totalValue = product.price * product.stock;
         sheetObject.cell(CellIndex.indexByColumnRow(columnIndex: 5, rowIndex: rowIndex))
-            .value = DoubleCellValue(product.price * product.stock);
+            .value = DoubleCellValue(totalValue);
       }
 
-      // Auto-fit columns (set reasonable widths)
+      // Auto-fit columns
       for (var i = 0; i < headers.length; i++) {
         sheetObject.setColumnWidth(i, 20);
       }
 
-      // Save the file
-      var fileBytes = excel.save();
+      // Encode to bytes - THIS IS THE KEY CHANGE
+      var fileBytes = excel.encode();
+
+      // Close loading dialog
+      if (mounted) Navigator.pop(context);
 
       if (fileBytes != null) {
-        final directory = await getApplicationDocumentsDirectory();
         final timestamp = DateTime.now().millisecondsSinceEpoch;
-        final filePath = '${directory.path}/inventory_export_$timestamp.xlsx';
+        final fileName = 'inventory_export_$timestamp.xlsx';
 
-        File file = File(filePath);
-        await file.writeAsBytes(fileBytes);
+        // Use the conditional import helper
+        await downloadFile(fileBytes, fileName);
 
-        // Close loading dialog
         if (mounted) {
-          Navigator.pop(context);
-
-          _showSuccess('Inventory exported to:\n${file.path}');
-
-          // Optionally open the file
-          await OpenFile.open(filePath);
+          _showSuccess('Inventory exported successfully: $fileName');
         }
       } else {
         if (mounted) {
-          Navigator.pop(context);
           _showError('Failed to generate Excel file');
         }
       }
@@ -832,6 +841,7 @@ class _InventoryPageState extends State<InventoryPage> {
       },
     );
   }
+
   void _showAllHistoryDialog() {
     showDialog(
       context: context,
