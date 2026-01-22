@@ -7,52 +7,9 @@ import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
+import '../models/detail_sale_item.dart';
 import '../models/sales_model.dart';
 import '../services/supabase_service.dart';
-
-class DetailedSaleItem {
-  final String id;
-  final String saleId;
-  final DateTime saleDate;
-  final String customerId;
-  final String customerName;
-  final String productId;
-  final String productName;
-  final String sku;
-  final int quantity;
-  final double price;
-  final double total;
-
-  DetailedSaleItem({
-    required this.id,
-    required this.saleId,
-    required this.saleDate,
-    required this.customerId,
-    required this.customerName,
-    required this.productId,
-    required this.productName,
-    required this.sku,
-    required this.quantity,
-    required this.price,
-    required this.total,
-  });
-
-  factory DetailedSaleItem.fromJson(Map<String, dynamic> json) {
-    return DetailedSaleItem(
-      id: json['id'],
-      saleId: json['sale_id'],
-      saleDate: DateTime.parse(json['sale_date']),
-      customerId: json['customer_id'],
-      customerName: json['customer_name'],
-      productId: json['product_id'],
-      productName: json['product_name'],
-      sku: json['sku'],
-      quantity: json['quantity'] as int,
-      price: (json['price'] as num).toDouble(),
-      total: (json['total'] as num).toDouble(),
-    );
-  }
-}
 
 class ReceiptScreen extends StatefulWidget {
   final String saleId;

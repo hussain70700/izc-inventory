@@ -65,6 +65,7 @@ class SidebarWidget extends StatelessWidget {
                     _sidebarItem(Icons.people_alt_outlined, "Staff", isNarrow),
                     _sidebarItem(Icons.inventory_outlined, "Inventory", isNarrow),
                     _sidebarItem(Icons.discount, "Promo Codes", isNarrow),
+                    _sidebarItem(Icons.person, "Customers", isNarrow),
                   ],
                 ),
               ),

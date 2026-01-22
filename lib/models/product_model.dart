@@ -1,3 +1,7 @@
+// ============================================
+// PRODUCT MODEL - With Image Support
+// lib/models/product_model.dart
+// ============================================
 
 class Product {
   final String id;
@@ -6,6 +10,7 @@ class Product {
   final int stock;
   final double price;
   final bool isActive;
+  final String? imageUrl; // Image URL from Supabase Storage
   final String? createdBy;
   final DateTime? createdAt;
   final DateTime? updatedAt;
@@ -17,6 +22,7 @@ class Product {
     required this.stock,
     required this.price,
     required this.isActive,
+    this.imageUrl,
     this.createdBy,
     this.createdAt,
     this.updatedAt,
@@ -36,6 +42,7 @@ class Product {
       stock: json['stock'] as int,
       price: (json['price'] as num).toDouble(),
       isActive: json['is_active'] as bool,
+      imageUrl: json['image_url'] as String?, // Parse image URL
       createdBy: json['created_by'] as String?,
       createdAt: json['created_at'] != null
           ? DateTime.parse(json['created_at'] as String)
@@ -54,6 +61,7 @@ class Product {
       'stock': stock,
       'price': price,
       'is_active': isActive,
+      'image_url': imageUrl, // Include image URL when updating
     };
   }
 
@@ -65,6 +73,7 @@ class Product {
     int? stock,
     double? price,
     bool? isActive,
+    String? imageUrl,
     String? createdBy,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -76,6 +85,7 @@ class Product {
       stock: stock ?? this.stock,
       price: price ?? this.price,
       isActive: isActive ?? this.isActive,
+      imageUrl: imageUrl ?? this.imageUrl,
       createdBy: createdBy ?? this.createdBy,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -84,7 +94,7 @@ class Product {
 
   @override
   String toString() {
-    return 'Product(id: $id, name: $name, sku: $sku, stock: $stock, price: $price, isActive: $isActive)';
+    return 'Product(id: $id, name: $name, sku: $sku, stock: $stock, price: $price, isActive: $isActive, imageUrl: $imageUrl)';
   }
 
   @override

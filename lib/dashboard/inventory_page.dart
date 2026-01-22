@@ -1,14 +1,15 @@
 // ============================================
-// INVENTORY PAGE - Updated with Session Service
+// INVENTORY PAGE - With Image Support
 // lib/screens/inventory_page.dart
 // ============================================
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 import '../models/product_model.dart';
 import '../services/supabase_service.dart';
 import '../services/session_service.dart';
-import 'package:excel/excel.dart';
+import 'package:excel/excel.dart' hide Border;
 import '../utils/file_download.dart';
 
 class InventoryPage extends StatefulWidget {
@@ -21,6 +22,7 @@ class InventoryPage extends StatefulWidget {
 class _InventoryPageState extends State<InventoryPage> {
   // Services
   final _supabaseService = SupabaseService();
+  final _imagePicker = ImagePicker();
 
   // State variables
   List<Product> _allProducts = [];
@@ -35,9 +37,11 @@ class _InventoryPageState extends State<InventoryPage> {
   int _currentPage = 1;
   final int _itemsPerPage = 4;
   final GlobalKey _filterButtonKey = GlobalKey();
-// Search functionality
+
+  // Search functionality
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
+
   // Stats
   double _totalValue = 0.0;
   int _lowStockCount = 0;
@@ -48,27 +52,26 @@ class _InventoryPageState extends State<InventoryPage> {
     super.initState();
     _initializeData();
 
-    // Add listener for search
     _searchController.addListener(() {
       setState(() {
         _searchQuery = _searchController.text.toLowerCase().trim();
-        _currentPage = 1; // Reset to first page when searching
+        _currentPage = 1;
       });
     });
   }
+
   @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
   }
-  // Initialize all data
+
   Future<void> _initializeData() async {
     _loadUserSession();
     await _loadData();
     _setupRealtimeListeners();
   }
 
-  // Load user session from Hive
   void _loadUserSession() {
     setState(() {
       _currentUserRole = SessionService.getUserRole();
@@ -76,14 +79,8 @@ class _InventoryPageState extends State<InventoryPage> {
       _currentUserEmail = SessionService.getEmail();
       _isAdmin = SessionService.isAdmin();
     });
-
-    print('User session loaded:');
-    print('Role: $_currentUserRole');
-    print('Username: $_currentUsername');
-    print('Is Admin: $_isAdmin');
   }
 
-  // Load all data from Supabase
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
 
@@ -102,6 +99,7 @@ class _InventoryPageState extends State<InventoryPage> {
           _lowStockCount = lowStock;
           _outOfStockCount = outOfStock;
           _isLoading = false;
+          print('Current User Role: $_currentUserRole');
         });
       }
     } catch (e) {
@@ -112,9 +110,7 @@ class _InventoryPageState extends State<InventoryPage> {
     }
   }
 
-  // Setup real-time listeners for live updates
   void _setupRealtimeListeners() {
-    // Listen to product changes
     _supabaseService.watchProducts().listen((products) {
       if (mounted) {
         setState(() {
@@ -124,7 +120,6 @@ class _InventoryPageState extends State<InventoryPage> {
       }
     });
 
-    // Listen to stock history changes
     _supabaseService.watchStockHistory(limit: 10).listen((history) {
       if (mounted) {
         setState(() => _stockHistory = history);
@@ -132,25 +127,14 @@ class _InventoryPageState extends State<InventoryPage> {
     });
   }
 
-  // Update statistics
   void _updateStats() {
-    _lowStockCount = _allProducts
-        .where((p) => p.isLowStock)
-        .length;
-    _outOfStockCount = _allProducts
-        .where((p) => p.isOutOfStock)
-        .length;
+    _lowStockCount = _allProducts.where((p) => p.isLowStock).length;
+    _outOfStockCount = _allProducts.where((p) => p.isOutOfStock).length;
     _totalValue = _allProducts.fold(0.0, (sum, p) => sum + (p.price * p.stock));
-    print('total values $_totalValue');
-
   }
 
-// Search products by name or SKU
   List<Product> _searchProducts(List<Product> products) {
-    if (_searchQuery.isEmpty) {
-      return products;
-    }
-
+    if (_searchQuery.isEmpty) return products;
     return products.where((product) {
       final nameLower = product.name.toLowerCase();
       final skuLower = product.sku.toLowerCase();
@@ -158,11 +142,8 @@ class _InventoryPageState extends State<InventoryPage> {
     }).toList();
   }
 
-// Filtered products based on active filter AND search
   List<Product> get _filteredProducts {
     List<Product> filtered;
-
-    // Apply status filter first
     switch (_activeFilter) {
       case 'Out of stock':
         filtered = _allProducts.where((p) => p.isOutOfStock).toList();
@@ -176,12 +157,9 @@ class _InventoryPageState extends State<InventoryPage> {
       default:
         filtered = _allProducts;
     }
-
-    // Then apply search filter
     return _searchProducts(filtered);
   }
 
-  // Pagination calculations
   int get _totalPages {
     if (_filteredProducts.isEmpty) return 1;
     return (_filteredProducts.length / _itemsPerPage).ceil();
@@ -195,7 +173,6 @@ class _InventoryPageState extends State<InventoryPage> {
     return _filteredProducts.sublist(startIndex, endIndex);
   }
 
-  // UI Helper methods
   void _showError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -216,18 +193,12 @@ class _InventoryPageState extends State<InventoryPage> {
     );
   }
 
-  // Show filter menu
   void _showFilterMenu() {
-    final RenderBox? button = _filterButtonKey.currentContext
-        ?.findRenderObject() as RenderBox?;
+    final RenderBox? button = _filterButtonKey.currentContext?.findRenderObject() as RenderBox?;
     if (button == null) return;
 
-    final RenderBox overlay = Overlay
-        .of(context)
-        .context
-        .findRenderObject() as RenderBox;
-    final Offset buttonPosition = button.localToGlobal(
-        Offset.zero, ancestor: overlay);
+    final RenderBox overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    final Offset buttonPosition = button.localToGlobal(Offset.zero, ancestor: overlay);
     final Size buttonSize = button.size;
 
     final RelativeRect position = RelativeRect.fromLTRB(
@@ -237,11 +208,7 @@ class _InventoryPageState extends State<InventoryPage> {
       overlay.size.height - (buttonPosition.dy + buttonSize.height + 8),
     );
 
-    final filterOptions = [
-      'Active products',
-      'Inactive products',
-      'Out of stock'
-    ];
+    final filterOptions = ['Active products', 'Inactive products', 'Out of stock'];
 
     showMenu<String>(
       context: context,
@@ -257,8 +224,7 @@ class _InventoryPageState extends State<InventoryPage> {
                 child: Text(
                   option,
                   style: TextStyle(
-                    fontWeight: isSelected ? FontWeight.bold : FontWeight
-                        .normal,
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                     color: isSelected ? const Color(0xffFE691E) : Colors.black,
                   ),
                 ),
@@ -279,7 +245,27 @@ class _InventoryPageState extends State<InventoryPage> {
     });
   }
 
-  // Add Product Dialog
+  // Pick image from gallery
+  Future<Uint8List?> _pickImage() async {
+    try {
+      final XFile? pickedFile = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 85,
+      );
+
+      if (pickedFile != null) {
+        return await pickedFile.readAsBytes();
+      }
+      return null;
+    } catch (e) {
+      _showError('Failed to pick image: $e');
+      return null;
+    }
+  }
+
+  // Add Product Dialog with Image
   void _showAddProductDialog() {
     if (!_isAdmin) {
       _showError('Only admins can add products');
@@ -292,6 +278,7 @@ class _InventoryPageState extends State<InventoryPage> {
     final priceController = TextEditingController();
     bool isActive = true;
     bool isSubmitting = false;
+    Uint8List? selectedImage;
 
     showDialog(
       context: context,
@@ -306,6 +293,45 @@ class _InventoryPageState extends State<InventoryPage> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    // Image Picker
+                    GestureDetector(
+                      onTap: isSubmitting ? null : () async {
+                        final image = await _pickImage();
+                        if (image != null) {
+                          setDialogState(() => selectedImage = image);
+                        }
+                      },
+                      child: Container(
+                        height: 150,
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade200,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.grey.shade300),
+                        ),
+                        child: selectedImage != null
+                            ? ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.memory(
+                            selectedImage!,
+                            fit: BoxFit.cover,
+                          ),
+                        )
+                            : Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.add_photo_alternate,
+                                size: 48, color: Colors.grey.shade600),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Tap to add product image',
+                              style: TextStyle(color: Colors.grey.shade600),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
                     TextField(
                       controller: nameController,
                       decoration: const InputDecoration(
@@ -333,8 +359,7 @@ class _InventoryPageState extends State<InventoryPage> {
                     const SizedBox(height: 12),
                     TextField(
                       controller: priceController,
-                      keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true),
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
                       decoration: const InputDecoration(
                         labelText: 'Price (e.g. 129.00)',
                         border: OutlineInputBorder(),
@@ -354,8 +379,7 @@ class _InventoryPageState extends State<InventoryPage> {
               ),
               actions: [
                 TextButton(
-                  onPressed: isSubmitting ? null : () =>
-                      Navigator.pop(dialogContext),
+                  onPressed: isSubmitting ? null : () => Navigator.pop(dialogContext),
                   child: const Text('Cancel'),
                 ),
                 ElevatedButton(
@@ -365,8 +389,7 @@ class _InventoryPageState extends State<InventoryPage> {
                     final stockText = stockController.text.trim();
                     final priceText = priceController.text.trim();
 
-                    if (name.isEmpty || sku.isEmpty || stockText.isEmpty ||
-                        priceText.isEmpty) {
+                    if (name.isEmpty || sku.isEmpty || stockText.isEmpty || priceText.isEmpty) {
                       _showError('Please fill in all fields');
                       return;
                     }
@@ -391,6 +414,7 @@ class _InventoryPageState extends State<InventoryPage> {
                           price: price,
                           isActive: isActive,
                         ),
+                        imageFile: selectedImage,
                       );
 
                       Navigator.pop(dialogContext);
@@ -423,7 +447,7 @@ class _InventoryPageState extends State<InventoryPage> {
     );
   }
 
-  // Edit Product Dialog
+  // Edit Product Dialog with Image
   void _showEditProductDialog(Product product) {
     if (!_isAdmin) {
       _showError('Only admins can edit products');
@@ -432,12 +456,12 @@ class _InventoryPageState extends State<InventoryPage> {
 
     final nameController = TextEditingController(text: product.name);
     final skuController = TextEditingController(text: product.sku);
-    final stockController = TextEditingController(
-        text: product.stock.toString());
-    final priceController = TextEditingController(
-        text: product.price.toStringAsFixed(2));
+    final stockController = TextEditingController(text: product.stock.toString());
+    final priceController = TextEditingController(text: product.price.toStringAsFixed(2));
     bool isActive = product.isActive;
     bool isSubmitting = false;
+    Uint8List? newImage;
+    bool hasExistingImage = product.imageUrl != null && product.imageUrl!.isNotEmpty;
 
     showDialog(
       context: context,
@@ -452,6 +476,82 @@ class _InventoryPageState extends State<InventoryPage> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    // Image Picker
+                    GestureDetector(
+                      onTap: isSubmitting ? null : () async {
+                        final image = await _pickImage();
+                        if (image != null) {
+                          setDialogState(() {
+                            newImage = image;
+                            hasExistingImage = false;
+                          });
+                        }
+                      },
+                      child: Container(
+                        height: 150,
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade200,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.grey.shade300),
+                        ),
+                        child: newImage != null
+                            ? ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.memory(
+                            newImage!,
+                            fit: BoxFit.cover,
+                          ),
+                        )
+                            : hasExistingImage
+                            ? ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.network(
+                            product.imageUrl!,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) {
+                              return Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.broken_image,
+                                      size: 48, color: Colors.grey.shade600),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'Failed to load image',
+                                    style: TextStyle(color: Colors.grey.shade600),
+                                  ),
+                                ],
+                              );
+                            },
+                          ),
+                        )
+                            : Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.add_photo_alternate,
+                                size: 48, color: Colors.grey.shade600),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Tap to add product image',
+                              style: TextStyle(color: Colors.grey.shade600),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    if (hasExistingImage || newImage != null)
+                      TextButton.icon(
+                        onPressed: isSubmitting ? null : () {
+                          setDialogState(() {
+                            newImage = null;
+                            hasExistingImage = false;
+                          });
+                        },
+                        icon: const Icon(Icons.delete, size: 18),
+                        label: const Text('Remove Image'),
+                        style: TextButton.styleFrom(foregroundColor: Colors.red),
+                      ),
+                    const SizedBox(height: 16),
                     TextField(
                       controller: nameController,
                       decoration: const InputDecoration(
@@ -479,8 +579,7 @@ class _InventoryPageState extends State<InventoryPage> {
                     const SizedBox(height: 12),
                     TextField(
                       controller: priceController,
-                      keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true),
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
                       decoration: const InputDecoration(
                         labelText: 'Price (e.g. 129.00)',
                         border: OutlineInputBorder(),
@@ -500,8 +599,7 @@ class _InventoryPageState extends State<InventoryPage> {
               ),
               actions: [
                 TextButton(
-                  onPressed: isSubmitting ? null : () =>
-                      Navigator.pop(dialogContext),
+                  onPressed: isSubmitting ? null : () => Navigator.pop(dialogContext),
                   child: const Text('Cancel'),
                 ),
                 ElevatedButton(
@@ -511,8 +609,7 @@ class _InventoryPageState extends State<InventoryPage> {
                     final stockText = stockController.text.trim();
                     final priceText = priceController.text.trim();
 
-                    if (name.isEmpty || sku.isEmpty || stockText.isEmpty ||
-                        priceText.isEmpty) {
+                    if (name.isEmpty || sku.isEmpty || stockText.isEmpty || priceText.isEmpty) {
                       _showError('Please fill in all fields');
                       return;
                     }
@@ -537,7 +634,9 @@ class _InventoryPageState extends State<InventoryPage> {
                           stock: stock,
                           price: price,
                           isActive: isActive,
+                          imageUrl: hasExistingImage ? product.imageUrl : null,
                         ),
+                        newImageBytes: newImage,
                       );
 
                       Navigator.pop(dialogContext);
@@ -568,28 +667,9 @@ class _InventoryPageState extends State<InventoryPage> {
       },
     );
   }
-// Replace your _exportInventoryToExcel method with this one
-// Add this import at the top of your file:
-// import 'package:flutter/foundation.dart' show kIsWeb;
-// For web downloads, add: import 'dart:html' as html;
-
-// ============================================
-// COMPLETE SOLUTION FOR EXCEL EXPORT
-// ============================================
-
-// Step 1: Remove these imports from inventory_page.dart:
-// import 'package:flutter/foundation.dart';
-// import 'dart:io';
-// import 'package:path_provider/path_provider.dart';
-
-// Step 2: Keep this import in inventory_page.dart:
-// import '../utils/file_download.dart';
-
-// Step 3: Replace the _exportInventoryToExcel method with this:
 
   Future<void> _exportInventoryToExcel() async {
     try {
-      // Show loading indicator
       showDialog(
         context: context,
         barrierDismissible: false,
@@ -598,14 +678,10 @@ class _InventoryPageState extends State<InventoryPage> {
         ),
       );
 
-      // Create a new Excel document
       var excel = Excel.createExcel();
-
-      // Get the default sheet and rename it
       Sheet sheetObject = excel['Sheet1'];
       excel.rename('Sheet1', 'Inventory');
 
-      // Add headers with styling
       var headers = ['Product Name', 'SKU', 'Stock', 'Price', 'Status', 'Total Value'];
       for (var i = 0; i < headers.length; i++) {
         var cell = sheetObject.cell(CellIndex.indexByColumnRow(columnIndex: i, rowIndex: 0));
@@ -617,27 +693,22 @@ class _InventoryPageState extends State<InventoryPage> {
         );
       }
 
-      // Add data rows
       for (var i = 0; i < _allProducts.length; i++) {
         final product = _allProducts[i];
         final rowIndex = i + 1;
 
         sheetObject.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: rowIndex))
             .value = TextCellValue(product.name);
-
         sheetObject.cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: rowIndex))
             .value = TextCellValue(product.sku);
-
         sheetObject.cell(CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: rowIndex))
             .value = IntCellValue(product.stock);
-
         sheetObject.cell(CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: rowIndex))
             .value = DoubleCellValue(product.price);
 
         String status = product.isOutOfStock
             ? "Out of Stock"
             : (product.isActive ? "Active" : "Inactive");
-
         sheetObject.cell(CellIndex.indexByColumnRow(columnIndex: 4, rowIndex: rowIndex))
             .value = TextCellValue(status);
 
@@ -646,24 +717,17 @@ class _InventoryPageState extends State<InventoryPage> {
             .value = DoubleCellValue(totalValue);
       }
 
-      // Auto-fit columns
       for (var i = 0; i < headers.length; i++) {
         sheetObject.setColumnWidth(i, 20);
       }
 
-      // Encode to bytes - THIS IS THE KEY CHANGE
       var fileBytes = excel.encode();
-
-      // Close loading dialog
       if (mounted) Navigator.pop(context);
 
       if (fileBytes != null) {
         final timestamp = DateTime.now().millisecondsSinceEpoch;
         final fileName = 'inventory_export_$timestamp.xlsx';
-
-        // Use the conditional import helper
         await downloadFile(fileBytes, fileName);
-
         if (mounted) {
           _showSuccess('Inventory exported successfully: $fileName');
         }
@@ -677,11 +741,9 @@ class _InventoryPageState extends State<InventoryPage> {
         Navigator.pop(context);
         _showError('Failed to export: $e');
       }
-      print('Export error: $e');
     }
   }
 
-  // Delete Product Dialog
   void _showDeleteProductDialog(Product product) {
     if (!_isAdmin) {
       _showError('Only admins can delete products');
@@ -697,26 +759,20 @@ class _InventoryPageState extends State<InventoryPage> {
             return AlertDialog(
               backgroundColor: Colors.white,
               title: const Text('Delete Product'),
-              content: Text('Are you sure you want to delete "${product
-                  .name}"?\n\nThis action cannot be undone.'),
+              content: Text('Are you sure you want to delete "${product.name}"?\n\nThis action cannot be undone.'),
               actions: [
                 TextButton(
-                  onPressed: isDeleting ? null : () =>
-                      Navigator.pop(dialogContext),
+                  onPressed: isDeleting ? null : () => Navigator.pop(dialogContext),
                   child: const Text('Cancel'),
                 ),
                 ElevatedButton(
                   onPressed: isDeleting ? null : () async {
                     setDialogState(() => isDeleting = true);
-
                     try {
                       await _supabaseService.deleteProduct(product.id);
                       Navigator.pop(dialogContext);
-                      _showSuccess(
-                          'Product "${product.name}" deleted successfully');
+                      _showSuccess('Product "${product.name}" deleted successfully');
                       await _loadData();
-
-                      // Adjust current page if needed
                       if (_currentPage > _totalPages && _totalPages > 0) {
                         setState(() => _currentPage = _totalPages);
                       }
@@ -746,7 +802,6 @@ class _InventoryPageState extends State<InventoryPage> {
     );
   }
 
-  // Restock functionality
   void _showRestockDialog(Product product) {
     if (!_isAdmin) {
       _showError('Only admins can restock products');
@@ -784,21 +839,18 @@ class _InventoryPageState extends State<InventoryPage> {
               ),
               actions: [
                 TextButton(
-                  onPressed: isSubmitting ? null : () =>
-                      Navigator.pop(dialogContext),
+                  onPressed: isSubmitting ? null : () => Navigator.pop(dialogContext),
                   child: const Text('Cancel'),
                 ),
                 ElevatedButton(
                   onPressed: isSubmitting ? null : () async {
                     final stockText = stockController.text.trim();
-
                     if (stockText.isEmpty) {
                       _showError('Please enter stock quantity');
                       return;
                     }
 
                     final newStock = int.tryParse(stockText);
-
                     if (newStock == null || newStock < 0) {
                       _showError('Please enter a valid stock quantity');
                       return;
@@ -812,7 +864,6 @@ class _InventoryPageState extends State<InventoryPage> {
                         newStock,
                         'Manual Restock',
                       );
-
                       Navigator.pop(dialogContext);
                       _showSuccess('Product restocked successfully');
                       await _loadData();
@@ -856,7 +907,6 @@ class _InventoryPageState extends State<InventoryPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Header
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -871,20 +921,15 @@ class _InventoryPageState extends State<InventoryPage> {
                   ],
                 ),
                 const Divider(height: 24),
-
-                // History List
                 Expanded(
                   child: FutureBuilder<List<StockHistory>>(
                     future: _supabaseService.fetchStockHistory(limit: 100),
                     builder: (context, snapshot) {
                       if (snapshot.connectionState == ConnectionState.waiting) {
                         return const Center(
-                          child: CircularProgressIndicator(
-                            color: Color(0xffFE691E),
-                          ),
+                          child: CircularProgressIndicator(color: Color(0xffFE691E)),
                         );
                       }
-
                       if (snapshot.hasError) {
                         return Center(
                           child: Text(
@@ -893,9 +938,7 @@ class _InventoryPageState extends State<InventoryPage> {
                           ),
                         );
                       }
-
                       final allHistory = snapshot.data ?? [];
-
                       if (allHistory.isEmpty) {
                         return const Center(
                           child: Text(
@@ -904,7 +947,6 @@ class _InventoryPageState extends State<InventoryPage> {
                           ),
                         );
                       }
-
                       return ListView.separated(
                         itemCount: allHistory.length,
                         itemBuilder: (context, index) {
@@ -916,8 +958,6 @@ class _InventoryPageState extends State<InventoryPage> {
                     },
                   ),
                 ),
-
-                // Footer
                 const SizedBox(height: 16),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.end,
@@ -935,15 +975,14 @@ class _InventoryPageState extends State<InventoryPage> {
       },
     );
   }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
       return const Scaffold(
         backgroundColor: Color(0xffF6F7FB),
         body: Center(
-          child: CircularProgressIndicator(
-            color: Color(0xffFE691E),
-          ),
+          child: CircularProgressIndicator(color: Color(0xffFE691E)),
         ),
       );
     }
@@ -952,58 +991,48 @@ class _InventoryPageState extends State<InventoryPage> {
       builder: (context, constraints) {
         final bool isNarrow = constraints.maxWidth < 800;
         final bool isMobile = constraints.maxWidth < 600;
-        final double horizontalPadding = isMobile ? 12.0 : (isNarrow
-            ? 16.0
-            : 24.0);
-        // Define vertical padding for the content area
+        final double horizontalPadding = isMobile ? 12.0 : (isNarrow ? 16.0 : 24.0);
         final double contentVerticalPadding = isMobile ? 16.0 : 24.0;
-
 
         return Scaffold(
           backgroundColor: const Color(0xffF6F7FB),
-          body: Column( // Main Column for sticky header and scrollable content
+          body: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // --- STICKY HEADER CONTAINER ---
               Container(
-                width: double.infinity, // Ensures the header container spans the full width
+                width: double.infinity,
                 padding: EdgeInsets.symmetric(
                   horizontal: horizontalPadding,
-                  vertical: isMobile ? 16 : 24, // Vertical padding inside the sticky header
+                  vertical: isMobile ? 16 : 24,
                 ),
                 decoration: BoxDecoration(
-                  color: Colors.white, // White background for the sticky header
+                  color: Colors.white,
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.grey.withOpacity(0.2), // Subtle shadow color
-                      spreadRadius: 0, // No spread, shadow only on bottom
-                      blurRadius: 6,   // Softness of the shadow
-                      offset: Offset(0, 4), // Shifts shadow 4 pixels downwards
+                      color: Colors.grey.withOpacity(0.2),
+                      spreadRadius: 0,
+                      blurRadius: 6,
+                      offset: Offset(0, 4),
                     ),
                   ],
                 ),
-                child: _buildHeader(isMobile), // The actual header content
+                child: _buildHeader(isMobile),
               ),
-
-              // --- SCROLLABLE BODY ---
-              Expanded( // Takes up all remaining vertical space
+              Expanded(
                 child: RefreshIndicator(
                   onRefresh: _loadData,
                   child: SingleChildScrollView(
                     physics: const AlwaysScrollableScrollPhysics(),
                     child: Padding(
-                      padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: contentVerticalPadding), // Padding for the scrollable content
+                      padding: EdgeInsets.symmetric(
+                        horizontal: horizontalPadding,
+                        vertical: contentVerticalPadding,
+                      ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // NOTE: The _buildHeader(isMobile) and its SizedBox are REMOVED from here
-                          // as they are now part of the sticky header.
-
-                          // STATS
                           _buildStatsRow(isMobile),
                           SizedBox(height: isMobile ? 16 : 24),
-
-                          // MENU BAR
                           Container(
                             padding: EdgeInsets.symmetric(
                               horizontal: isMobile ? 12 : 24,
@@ -1024,8 +1053,6 @@ class _InventoryPageState extends State<InventoryPage> {
                             child: _buildMenuBar(isMobile),
                           ),
                           SizedBox(height: isMobile ? 16 : 24),
-
-                          // TABLE AREA
                           SizedBox(
                             height: isMobile ? 350 : (isNarrow ? 400 : 440),
                             child: Container(
@@ -1078,9 +1105,7 @@ class _InventoryPageState extends State<InventoryPage> {
                               ),
                             ),
                           ),
-
                           SizedBox(height: isMobile ? 16 : 24),
-                          // Stock History Card
                           _buildStockHistoryCard(isMobile),
                         ],
                       ),
@@ -1095,24 +1120,14 @@ class _InventoryPageState extends State<InventoryPage> {
     );
   }
 
-// ============================================
-// WIDGET BUILDERS FOR INVENTORY PAGE
-// ============================================
-
   Widget _buildHeader(bool isMobile) {
     return isMobile
         ? Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text(
-              "Inventory Management",
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-
-          ],
+        const Text(
+          "Inventory Management",
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 12),
         TextField(
@@ -1123,9 +1138,7 @@ class _InventoryPageState extends State<InventoryPage> {
             suffixIcon: _searchQuery.isNotEmpty
                 ? IconButton(
               icon: const Icon(Icons.clear),
-              onPressed: () {
-                _searchController.clear();
-              },
+              onPressed: () => _searchController.clear(),
             )
                 : null,
             filled: true,
@@ -1149,21 +1162,14 @@ class _InventoryPageState extends State<InventoryPage> {
               "Inventory Management",
               style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
             ),
-            if (_currentUserEmail != null)
-              Text(
-                'Logged in as $_currentUserEmail',
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-              ),
+
           ],
         ),
         Row(
           children: [
-
-            const SizedBox(width: 16),
             SizedBox(
               width: 250,
               child: TextField(
-                style: TextStyle(),
                 controller: _searchController,
                 decoration: InputDecoration(
                   hintText: "Search products, SKU...",
@@ -1171,9 +1177,7 @@ class _InventoryPageState extends State<InventoryPage> {
                   suffixIcon: _searchQuery.isNotEmpty
                       ? IconButton(
                     icon: const Icon(Icons.clear),
-                    onPressed: () {
-                      _searchController.clear();
-                    },
+                    onPressed: () => _searchController.clear(),
                   )
                       : null,
                   filled: true,
@@ -1196,58 +1200,53 @@ class _InventoryPageState extends State<InventoryPage> {
     return isMobile
         ? Column(
       children: [
-
-
         Row(
           children: [
-            Expanded(child: _buildStatCard(
-                "Total Products", _allProducts.length.toString(),
-                Icons.inventory, Colors.blue)),
+            Expanded(
+                child: _buildStatCard("Total Products",
+                    _allProducts.length.toString(), Icons.inventory, Colors.blue)),
             const SizedBox(width: 8),
-            Expanded(child: _buildStatCard(
-                "Total Value", "\$${_totalValue.toStringAsFixed(2)}",
-                Icons.attach_money, Colors.green)),
-
+            Expanded(
+                child: _buildStatCard("Total Value",
+                    "\$${_totalValue.toStringAsFixed(2)}", Icons.attach_money, Colors.green)),
           ],
-
         ),
         const SizedBox(height: 8),
         Row(
           children: [
-            Expanded(child: _buildStatCard(
-                "Low Stock", _lowStockCount.toString(), Icons.warning,
-                Colors.orange)),
+            Expanded(
+                child: _buildStatCard(
+                    "Low Stock", _lowStockCount.toString(), Icons.warning, Colors.orange)),
             const SizedBox(width: 8),
-            Expanded(child: _buildStatCard(
-                "Out of Stock", _outOfStockCount.toString(), Icons.cancel,
-                Colors.red)),
+            Expanded(
+                child: _buildStatCard("Out of Stock", _outOfStockCount.toString(),
+                    Icons.cancel, Colors.red)),
           ],
         ),
       ],
     )
         : Row(
       children: [
-        Expanded(child: _buildStatCard(
-            "Total Products", _allProducts.length.toString(), Icons.inventory,
-            Colors.blue)),
+        Expanded(
+            child: _buildStatCard("Total Products", _allProducts.length.toString(),
+                Icons.inventory, Colors.blue)),
         const SizedBox(width: 12),
-        Expanded(child: _buildStatCard(
-            "Total Value", '\$${_totalValue.toStringAsFixed(2)}',
-            Icons.attach_money, Colors.green)),
+        Expanded(
+            child: _buildStatCard("Total Value", '\$${_totalValue.toStringAsFixed(2)}',
+                Icons.attach_money, Colors.green)),
         const SizedBox(width: 12),
-        Expanded(child: _buildStatCard(
-            "Low Stock", _lowStockCount.toString(), Icons.warning,
-            Colors.orange)),
+        Expanded(
+            child: _buildStatCard(
+                "Low Stock", _lowStockCount.toString(), Icons.warning, Colors.orange)),
         const SizedBox(width: 12),
-        Expanded(child: _buildStatCard(
-            "Out of Stock", _outOfStockCount.toString(), Icons.cancel,
-            Colors.red)),
+        Expanded(
+            child: _buildStatCard(
+                "Out of Stock", _outOfStockCount.toString(), Icons.cancel, Colors.red)),
       ],
     );
   }
 
-  Widget _buildStatCard(String title, String value, IconData icon,
-      Color color) {
+  Widget _buildStatCard(String title, String value, IconData icon, Color color) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -1273,11 +1272,9 @@ class _InventoryPageState extends State<InventoryPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title,
-                    style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                Text(title, style: const TextStyle(color: Colors.grey, fontSize: 12)),
                 Text(value,
-                    style: const TextStyle(
-                        fontSize: 18, fontWeight: FontWeight.bold)),
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               ],
             ),
           )
@@ -1316,19 +1313,16 @@ class _InventoryPageState extends State<InventoryPage> {
               onPressed: _exportInventoryToExcel,
             ),
             ElevatedButton.icon(
-              onPressed: _isAdmin ? _showAddProductDialog : () {
-                _showError('Only admins can add products');
-              },
+              onPressed: _isAdmin
+                  ? _showAddProductDialog
+                  : () => _showError('Only admins can add products'),
               icon: const Icon(Icons.add, size: 18),
               label: const Text("Add Product"),
               style: ElevatedButton.styleFrom(
-                backgroundColor: _isAdmin ? const Color(0xffFE691E) : Colors
-                    .grey,
+                backgroundColor: _isAdmin ? const Color(0xffFE691E) : Colors.grey,
                 foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8)),
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 12, vertical: 8),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               ),
             ),
           ],
@@ -1361,17 +1355,15 @@ class _InventoryPageState extends State<InventoryPage> {
             ),
             const SizedBox(width: 8),
             ElevatedButton.icon(
-              onPressed: _isAdmin ? _showAddProductDialog : () {
-                _showError('Only admins can add products');
-              },
+              onPressed: _isAdmin
+                  ? _showAddProductDialog
+                  : () => _showError('Only admins can add products'),
               icon: const Icon(Icons.add),
               label: const Text("Add Product"),
               style: ElevatedButton.styleFrom(
-                backgroundColor: _isAdmin ? const Color(0xffFE691E) : Colors
-                    .grey,
+                backgroundColor: _isAdmin ? const Color(0xffFE691E) : Colors.grey,
                 foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               ),
             ),
           ],
@@ -1390,19 +1382,16 @@ class _InventoryPageState extends State<InventoryPage> {
         });
       },
       style: TextButton.styleFrom(
-        backgroundColor: isSelected
-            ? const Color(0xffFE691E).withOpacity(0.1)
-            : Colors.transparent,
-        foregroundColor: isSelected ? const Color(0xffFE691E) : Colors.grey
-            .shade600,
+        backgroundColor:
+        isSelected ? const Color(0xffFE691E).withOpacity(0.1) : Colors.transparent,
+        foregroundColor: isSelected ? const Color(0xffFE691E) : Colors.grey.shade600,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
       child: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
     );
   }
 
-  Widget _buildActionButton(IconData icon, String label,
-      {VoidCallback? onPressed}) {
+  Widget _buildActionButton(IconData icon, String label, {VoidCallback? onPressed}) {
     return OutlinedButton.icon(
       onPressed: onPressed,
       icon: Icon(icon, size: 18),
@@ -1437,15 +1426,12 @@ class _InventoryPageState extends State<InventoryPage> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text("PRODUCTS", style: TextStyle(
-                color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
+            const Text("PRODUCTS",
+                style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
             if (_searchQuery.isNotEmpty || _activeFilter != 'Active products')
               Text(
                 '${_filteredProducts.length} result${_filteredProducts.length != 1 ? 's' : ''}',
-                style: TextStyle(
-                  color: Colors.grey.shade600,
-                  fontSize: 11,
-                ),
+                style: TextStyle(color: Colors.grey.shade600, fontSize: 11),
               ),
           ],
         ),
@@ -1453,44 +1439,78 @@ class _InventoryPageState extends State<InventoryPage> {
     }
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 16.0),
+      padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 12.0),
       child: Row(
         children: [
-          const Expanded(flex: 3,
-              child: Text("PRODUCT",
-                  style: TextStyle(color: Colors.grey, fontSize: 12))),
-          const Expanded(flex: 2,
-              child: Text(
-                  "SKU", style: TextStyle(color: Colors.grey, fontSize: 12))),
-          const Expanded(child: Text(
-              "STOCK", style: TextStyle(color: Colors.grey, fontSize: 12))),
-          const Expanded(flex: 2,
-              child: Text(
-                  "PRICE", style: TextStyle(color: Colors.grey, fontSize: 12))),
-          const Expanded(flex: 2,
-              child: Text("STATUS",
-                  style: TextStyle(color: Colors.grey, fontSize: 12))),
+          // IMAGE - Center aligned
+          Expanded(
+            flex: 1,
+            child: Center(
+              child: const Text("IMAGE",
+                  style: TextStyle(color: Colors.grey, fontSize: 12)),
+            ),
+          ),
+          const SizedBox(width: 20),
+
+          // PRODUCT - Left aligned (default)
+          const Expanded(
+            flex: 3,
+            child: Text("PRODUCT",
+                style: TextStyle(color: Colors.grey, fontSize: 12)),
+          ),
+
+          // SKU - Left aligned (default)
+          const Expanded(
+            flex: 2,
+            child: Text("SKU",
+                style: TextStyle(color: Colors.grey, fontSize: 12)),
+          ),
+
+          // STOCK - Center aligned
+          Expanded(
+            flex: 1,
+            child: Center(
+              child: const Text("STOCK",
+                  style: TextStyle(color: Colors.grey, fontSize: 12)),
+            ),
+          ),
+          const SizedBox(width: 20),
+
+          // PRICE - Left aligned (default)
+          const Expanded(
+            flex: 2,
+            child: Text("PRICE",
+                style: TextStyle(color: Colors.grey, fontSize: 12)),
+          ),
+
+          // STATUS - Center aligned
           Expanded(
             flex: 2,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Text(
-                  "ACTIONS",
-                  style: TextStyle(color: Colors.grey, fontSize: 12),
-                ),
-                if (_searchQuery.isNotEmpty || _activeFilter != 'Active products')
-                  Padding(
-                    padding: const EdgeInsets.only(left: 8.0),
-                    child: Text(
-                      '(${_filteredProducts.length})',
-                      style: TextStyle(
-                        color: Colors.grey.shade600,
-                        fontSize: 11,
+            child: Center(
+              child: const Text("STATUS",
+                  style: TextStyle(color: Colors.grey, fontSize: 12)),
+            ),
+          ),
+
+          // ACTIONS - Center aligned
+          Expanded(
+            flex: 2,
+            child: Center(
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Text("ACTIONS",
+                      style: TextStyle(color: Colors.grey, fontSize: 12)),
+                  if (_searchQuery.isNotEmpty || _activeFilter != 'Active products')
+                    Padding(
+                      padding: const EdgeInsets.only(left: 8.0),
+                      child: Text(
+                        '(${_filteredProducts.length})',
+                        style: TextStyle(color: Colors.grey.shade600, fontSize: 11),
                       ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
           ),
         ],
@@ -1510,96 +1530,119 @@ class _InventoryPageState extends State<InventoryPage> {
   }
 
   Widget _buildMobileProductCard(Product product) {
-    Color statusColor = product.isOutOfStock ? Colors.red : (product.isActive
-        ? Colors.green
-        : Colors.grey);
-    String statusText = product.isOutOfStock ? "Out of Stock" : (product
-        .isActive ? "Active" : "Disabled");
+    Color statusColor =
+    product.isOutOfStock ? Colors.red : (product.isActive ? Colors.green : Colors.grey);
+    String statusText =
+    product.isOutOfStock ? "Out of Stock" : (product.isActive ? "Active" : "Disabled");
 
     return Container(
       padding: const EdgeInsets.all(12),
-      child: Column(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          // Product Image
+          Container(
+            width: 60,
+            height: 60,
+            decoration: BoxDecoration(
+              color: Colors.grey.shade200,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: product.imageUrl != null && product.imageUrl!.isNotEmpty
+                ? ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.network(
+                product.imageUrl!,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) {
+                  return Icon(Icons.broken_image, color: Colors.grey.shade400);
+                },
+              ),
+            )
+                : Icon(Icons.inventory_2, color: Colors.grey.shade400, size: 30),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      product.name,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            product.name,
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'SKU: ${product.sku}',
+                            style: const TextStyle(fontSize: 12, color: Colors.grey),
+                          ),
+                        ],
+                      ),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'SKU: ${product.sku}',
-                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: statusColor.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        statusText,
+                        style: TextStyle(
+                            color: statusColor, fontWeight: FontWeight.bold, fontSize: 11),
+                      ),
                     ),
                   ],
                 ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: statusColor.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  statusText,
-                  style: TextStyle(color: statusColor,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 11),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text("Stock",
-                      style: TextStyle(fontSize: 11, color: Colors.grey)),
-                  Text(
-                    product.stock.toString(),
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                      color: product.isLowStock || product.isOutOfStock ? Colors
-                          .red : Colors.black,
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text("Stock", style: TextStyle(fontSize: 11, color: Colors.grey)),
+                        Text(
+                          product.stock.toString(),
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: product.isLowStock || product.isOutOfStock
+                                ? Colors.red
+                                : Colors.black,
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                ],
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  const Text("Price",
-                      style: TextStyle(fontSize: 11, color: Colors.grey)),
-                  Text(
-                    product.priceFormatted,
-                    style: const TextStyle(
-                        fontSize: 14, fontWeight: FontWeight.bold),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              if (product.isOutOfStock)
-                _buildRestockButton(product)
-              else
-                _buildOptionsMenu(product),
-            ],
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        const Text("Price", style: TextStyle(fontSize: 11, color: Colors.grey)),
+                        Text(
+                          product.priceFormatted,
+                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    if (product.isOutOfStock)
+                      _buildRestockButton(product)
+                    else
+                      _buildOptionsMenu(product),
+                  ],
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -1607,43 +1650,113 @@ class _InventoryPageState extends State<InventoryPage> {
   }
 
   Widget _buildTableRow(Product product, bool isMobile) {
-    Color statusColor = product.isOutOfStock ? Colors.red : (product.isActive
-        ? Colors.green
-        : Colors.grey);
-    String statusText = product.isOutOfStock ? "Out of Stock" : (product
-        .isActive ? "Active" : "Disabled");
+    Color statusColor =
+    product.isOutOfStock ? Colors.red : (product.isActive ? Colors.green : Colors.grey);
+    String statusText =
+    product.isOutOfStock ? "Out of Stock" : (product.isActive ? "Active" : "Disabled");
 
     return Container(
       height: 70,
-      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
       child: Row(
         children: [
-          Expanded(flex: 3, child: Text(product.name)),
-          Expanded(flex: 2, child: Text(product.sku)),
+          // Product Image - Center aligned
           Expanded(
-              child: Text(product.stock.toString(),
-                  style: TextStyle(
-                      color: product.isLowStock || product.isOutOfStock
-                          ? Colors.red
-                          : Colors.black))),
-          Expanded(flex: 2, child: Text(product.priceFormatted)),
-          Expanded(
-            flex: 2,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: statusColor.withOpacity(0.15),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Text(
-                statusText,
-                textAlign: TextAlign.center,
-                style: TextStyle(color: statusColor,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12),
+            flex: 1,
+            child: Center(
+              child: Container(
+                width: 48,           // slightly smaller looks better in table
+                height: 48,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,           // ← important
+                  color: Colors.grey.shade200,
+                  // Optional: border
+                  // border: Border.all(color: Colors.grey.shade300, width: 1),
+                ),
+                child: ClipOval(                    // ← clips content to circle
+                  child: product.imageUrl != null && product.imageUrl!.isNotEmpty
+                      ? Image.network(
+                    product.imageUrl!,
+                    fit: BoxFit.cover,
+                    width: 48,
+                    height: 48,
+                    errorBuilder: (context, error, stackTrace) {
+                      return Icon(
+                        Icons.broken_image,
+                        color: Colors.grey.shade400,
+                        size: 24,
+                      );
+                    },
+                  )
+                      : Icon(
+                    Icons.inventory_2,
+                    color: Colors.grey.shade400,
+                    size: 24,
+                  ),
+                ),
               ),
             ),
           ),
+          const SizedBox(width: 20),
+
+          // Product Name - Left aligned (default)
+          Expanded(
+            flex: 3,
+            child: Text(product.name),
+          ),
+
+          // SKU - Left aligned (default)
+          Expanded(
+            flex: 2,
+            child: Text(product.sku),
+          ),
+
+          // Stock - Center aligned
+          Expanded(
+            flex: 1,
+            child: Center(
+              child: Text(
+                product.stock.toString(),
+                style: TextStyle(
+                  color: product.isLowStock || product.isOutOfStock
+                      ? Colors.red
+                      : Colors.black,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 20),
+
+          // Price - Left aligned (default)
+          Expanded(
+            flex: 2,
+            child: Text(product.priceFormatted),
+          ),
+
+          // Status - Center aligned
+          Expanded(
+            flex: 2,
+            child: Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: statusColor.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  statusText,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: statusColor,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+          // Actions - Center aligned
           Expanded(
             flex: 2,
             child: Center(
@@ -1676,8 +1789,7 @@ class _InventoryPageState extends State<InventoryPage> {
         final position = details.globalPosition;
         final result = await showMenu<String>(
           context: context,
-          position: RelativeRect.fromLTRB(
-              position.dx, position.dy, position.dx, position.dy),
+          position: RelativeRect.fromLTRB(position.dx, position.dy, position.dx, position.dy),
           items: [
             const PopupMenuItem<String>(
               value: 'edit',
@@ -1708,58 +1820,58 @@ class _InventoryPageState extends State<InventoryPage> {
     );
   }
 
-    Widget _buildPaginationControls() {
-      return Padding(
-          padding: const EdgeInsets.only(top: 16.0),
-          child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-          // Results info
-          Text(
-          'Showing ${_paginatedProducts.isEmpty ? 0 : ((_currentPage - 1) * _itemsPerPage) + 1}-${((_currentPage - 1) * _itemsPerPage) + _paginatedProducts.length} of ${_filteredProducts.length}',
-      style: TextStyle(
-      color: Colors.grey.shade600,
-      fontSize: 12,
+  Widget _buildPaginationControls() {
+    return Padding(
+        padding: const EdgeInsets.only(top: 16.0),
+        child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+        Text(
+        'Showing ${_paginatedProducts.isEmpty ? 0 : ((_currentPage - 1) * _itemsPerPage) + 1}-${((_currentPage - 1) * _itemsPerPage) + _paginatedProducts.length} of ${_filteredProducts.length}',
+    style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+    ),
+    Row(
+    mainAxisAlignment: MainAxisAlignment.end,
+    children: [
+    IconButton(
+    icon: const Icon(Icons.chevron_left),
+    onPressed: _currentPage > 1
+    ? () {
+    setState(() => _currentPage--);
+    }
+        : null,
+    ),
+    ...List.generate(_totalPages, (index) {
+    final pageNum = index + 1;
+    return TextButton(
+      onPressed: () {
+        setState(() => _currentPage = pageNum);
+      },
+      style: TextButton.styleFrom(
+        backgroundColor: _currentPage == pageNum
+            ? const Color(0xffFE691E)
+            : Colors.transparent,
+        foregroundColor:
+        _currentPage == pageNum ? Colors.white : Colors.black,
+        shape: const CircleBorder(),
+        minimumSize: const Size(40, 40),
       ),
+      child: Text('$pageNum'),
+    );
+    }),
+      IconButton(
+        icon: const Icon(Icons.chevron_right),
+        onPressed: _currentPage < _totalPages
+            ? () {
+          setState(() => _currentPage++);
+        }
+            : null,
       ),
-      // Pagination buttons
-                // Pagination buttons
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.chevron_left),
-                      onPressed: _currentPage > 1 ? () {
-                        setState(() => _currentPage--);
-                      } : null,
-                    ),
-                    ...List.generate(_totalPages, (index) {
-                      final pageNum = index + 1;
-                      return TextButton(
-                        onPressed: () {
-                          setState(() => _currentPage = pageNum);
-                        },
-                        style: TextButton.styleFrom(
-                          backgroundColor: _currentPage == pageNum ? const Color(
-                              0xffFE691E) : Colors.transparent,
-                          foregroundColor: _currentPage == pageNum ? Colors.white : Colors
-                              .black,
-                          shape: const CircleBorder(),
-                          minimumSize: const Size(40, 40),
-                        ),
-                        child: Text('$pageNum'),
-                      );
-                    }),
-                    IconButton(
-                      icon: const Icon(Icons.chevron_right),
-                      onPressed: _currentPage < _totalPages ? () {
-                        setState(() => _currentPage++);
-                      } : null,
-                    ),
-                  ],
-                ),
-    ])
-      );
+    ],
+    ),
+            ],
+        ),
+    );
   }
 
   Widget _buildStockHistoryCard(bool isMobile) {
@@ -1788,14 +1900,11 @@ class _InventoryPageState extends State<InventoryPage> {
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
               OutlinedButton(
-                onPressed:
-                  _showAllHistoryDialog
-                ,
+                onPressed: _showAllHistoryDialog,
                 style: OutlinedButton.styleFrom(
                   foregroundColor: Colors.grey.shade700,
                   side: BorderSide(color: Colors.grey.shade300),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                 ),
                 child: const Text("View All"),
               ),
@@ -1813,8 +1922,7 @@ class _InventoryPageState extends State<InventoryPage> {
               ),
             )
           else
-            ..._stockHistory.take(3).map((history) =>
-                _buildHistoryLogRow(history)),
+            ..._stockHistory.take(3).map((history) => _buildHistoryLogRow(history)),
         ],
       ),
     );
@@ -1841,8 +1949,7 @@ class _InventoryPageState extends State<InventoryPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '${history.productName} updated from ${history.oldStock ??
-                      "N/A"} to ${history.newStock}',
+                  '${history.productName} updated from ${history.oldStock ?? "N/A"} to ${history.newStock}',
                   style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
                 Text(

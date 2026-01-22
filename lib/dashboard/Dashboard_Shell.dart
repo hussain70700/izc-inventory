@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:izc_inventory/dashboard/customers_screen.dart';
 import 'package:izc_inventory/dashboard/dashboard_page.dart';
 import 'package:izc_inventory/dashboard/inventory_page.dart';
 import 'package:izc_inventory/dashboard/promo_code_page.dart';
@@ -33,6 +34,7 @@ class _DashboardShellState extends State<DashboardShell> {
     ReportsPage(),
     UsersPage(),
     PromoCodePage(),
+    CustomersScreen(),
 
     // Add other main pages here as you create them
     // e.g. TrackingPage(), CustomersPage(), etc.
@@ -49,6 +51,7 @@ class _DashboardShellState extends State<DashboardShell> {
     "Staff": 4,
     "Settings": 0,
     "Promo Codes": 5,
+    "Customers": 6,
   };
 
   // This is used for the header title and sidebar selection.

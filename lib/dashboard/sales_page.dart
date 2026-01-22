@@ -447,20 +447,45 @@ class _SalesScreenState extends State<SalesScreen> {
                   ),
                 ),
               ),
-              SizedBox(
-                width: constraints.maxWidth < 1200 ? 350 : 400,
+              // Replace this entire SizedBox(...) with the code below
+              Flexible(                     // ← Use Flexible instead of SizedBox for width control
                 child: Container(
-                  padding: const EdgeInsets.all(16),
+                  width: double.infinity,               // You can keep a max width, or use double.infinity
+
                   decoration: const BoxDecoration(
                     color: Colors.white,
                     boxShadow: [
                       BoxShadow(
-                        blurRadius: 8,
+                        blurRadius: 12,
                         color: Colors.black12,
-                      )
+                        offset: Offset(0, 2),
+                      ),
                     ],
                   ),
-                  child: _summaryPanel(),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Optional: Add a header to match left side
+                      // Padding(
+                      //   padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                      //   child: Text(
+                      //     'Order Summary',
+                      //     style: Theme.of(context).textTheme.titleLarge!.copyWith(
+                      //       fontWeight: FontWeight.bold,
+                      //     ),
+                      //   ),
+                      // ),
+
+                      // This is the key: Expanded + SingleChildScrollView
+                      Expanded(
+                        child: SingleChildScrollView(
+                          physics: const BouncingScrollPhysics(),
+                          padding: const EdgeInsets.all(16),
+                          child: _summaryPanel(),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -541,13 +566,55 @@ class _SalesScreenState extends State<SalesScreen> {
                 itemBuilder: (context, index) {
                   final product = _searchResults[index];
                   return ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: Colors.blue.shade100,
-                      child: Text(
-                        product.name[0].toUpperCase(),
-                        style: TextStyle(
-                          color: Colors.blue.shade900,
-                          fontWeight: FontWeight.bold,
+                    // Updated leading to show product image
+                    leading: Container(
+                      width: 50,
+                      height: 50,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade200,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: product.imageUrl != null && product.imageUrl!.isNotEmpty
+                          ? ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.network(
+                          product.imageUrl!,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) {
+                            // Fallback to initial letter if image fails
+                            return Container(
+                              decoration: BoxDecoration(
+                                color: Colors.blue.shade100,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Center(
+                                child: Text(
+                                  product.name[0].toUpperCase(),
+                                  style: TextStyle(
+                                    color: Colors.blue.shade900,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 20,
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      )
+                          : Container(
+                        decoration: BoxDecoration(
+                          color: Colors.blue.shade100,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Center(
+                          child: Text(
+                            product.name[0].toUpperCase(),
+                            style: TextStyle(
+                              color: Colors.blue.shade900,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 20,
+                            ),
+                          ),
                         ),
                       ),
                     ),
