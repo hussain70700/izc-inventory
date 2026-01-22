@@ -1089,16 +1089,83 @@ class SupabaseService {
   }
 
   /// Get detailed sale items from the view
+// Replace your getDetailedSaleItems method with this:
+
+  /// Get detailed sale items - FIXED to handle null customer data
   Future<List<DetailedSaleItem>> getDetailedSaleItems(String saleId) async {
     try {
+      print('🔍 Fetching detailed sale items for sale: $saleId');
+
+      // Query sale_items with joins to get all necessary data
       final response = await _supabase
-          .from('detailed_sale_items')
-          .select()
+          .from('sale_items')
+          .select('''
+          id,
+          sale_id,
+          product_id,
+          quantity,
+          price,
+          total,
+          sales!inner (
+            sale_date,
+            customer_id,
+            customers (
+              id,
+              name
+            )
+          ),
+          products!inner (
+            name,
+            sku,
+            image_url
+          )
+        ''')
           .eq('sale_id', saleId);
-      return (response as List)
-          .map((item) => DetailedSaleItem.fromJson(item))
-          .toList();
-    } catch (e) {
+
+      print('📦 Raw response: $response');
+
+      if (response == null || (response as List).isEmpty) {
+        print('⚠️ No sale items found for sale: $saleId');
+        return [];
+      }
+
+      final items = (response as List).map((item) {
+        print('Processing item: $item');
+
+        // Extract nested data safely
+        final saleData = item['sales'] as Map<String, dynamic>?;
+        final customerData = saleData?['customers'] as Map<String, dynamic>?;
+        final productData = item['products'] as Map<String, dynamic>;
+
+        // Extract values with null safety
+        final customerId = customerData?['id'] as String?;
+        final customerName = customerData?['name'] as String?;
+        final saleDate = saleData?['sale_date'] as String?;
+
+        return DetailedSaleItem(
+          id: item['id'] as String,
+          saleId: item['sale_id'] as String,
+          saleDate: saleDate != null
+              ? DateTime.parse(saleDate)
+              : DateTime.now(),
+          customerId: customerId,  // Can be null
+          customerName: customerName,  // Can be null
+          productId: item['product_id'] as String,
+          productName: productData['name'] as String,
+          sku: productData['sku'] as String,
+          productImageUrl: productData['image_url'] as String?,
+          quantity: item['quantity'] as int,
+          price: (item['price'] as num).toDouble(),
+          total: (item['total'] as num).toDouble(),
+        );
+      }).toList();
+
+      print('✅ Successfully processed ${items.length} sale items');
+      return items;
+
+    } catch (e, stackTrace) {
+      print('❌ Error fetching sale items: $e');
+      print('StackTrace: $stackTrace');
       throw Exception('Failed to fetch sale items: $e');
     }
   }

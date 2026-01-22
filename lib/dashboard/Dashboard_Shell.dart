@@ -28,23 +28,20 @@ class _DashboardShellState extends State<DashboardShell> {
 
   // List of all the pages that can be displayed in the main content area.
   static const List<Widget> _mainPages = <Widget>[
-    DashboardPage(),
     SalesScreen(),
+    DashboardPage(),
     InventoryPage(),
     ReportsPage(),
     UsersPage(),
     PromoCodePage(),
     CustomersScreen(),
-
-    // Add other main pages here as you create them
-    // e.g. TrackingPage(), CustomersPage(), etc.
   ];
 
   // A map to link the sidebar string to the correct index.
   // This makes the code readable and easy to maintain.
   final Map<String, int> _pageIndexMap = {
-    "Dashboard": 0,
-    "Sales": 1,
+    "Sales": 0,
+    "Dashboard": 1,
     "Inventory": 2,
     "Reports": 3,
     "Tracking": 0, // Placeholder
@@ -54,24 +51,60 @@ class _DashboardShellState extends State<DashboardShell> {
     "Customers": 6,
   };
 
+  @override
+  void initState() {
+    super.initState();
+    // Set initial page based on role - Sales is accessible to all roles
+    _selectedIndex = 0;
+  }
+
   // This is used for the header title and sidebar selection.
   String get _selectedItemName => _pageIndexMap.keys.firstWhere(
         (key) => _pageIndexMap[key] == _selectedIndex,
-    orElse: () => "Dashboard", // Fallback
+    orElse: () => "Sales", // Fallback
   );
 
-  // In the _onSelectItem method
+  // Check if user has access to a specific page based on their role
+  bool _hasAccessToPage(String pageName) {
+    final role = _userRole.toLowerCase();
 
+    switch (role) {
+      case 'admin':
+        return true; // Admin has access to all pages
+
+      case 'manager':
+        return ['Sales', 'Customers', 'Inventory'].contains(pageName);
+
+      case 'user':
+      default:
+        return pageName == 'Sales';
+    }
+  }
+
+  // Handle page selection with role-based access control
   void _onSelectItem(String itemName) {
+    // Check if user has access to this page
+    if (!_hasAccessToPage(itemName)) {
+      // Show a message that they don't have access
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('You do not have permission to access this page'),
+          backgroundColor: Colors.red,
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
     setState(() {
       _selectedIndex = _pageIndexMap[itemName] ?? 0;
     });
-    // Use the key to safely access the Scaffold's state
+
+    // Close drawer if open
     if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
       Navigator.of(context).pop();
     }
   }
-
 
   // Handle logout
   Future<void> _handleLogout() async {
@@ -243,39 +276,38 @@ class _DashboardShellState extends State<DashboardShell> {
     return Scaffold(
       key: _scaffoldKey,
       backgroundColor: const Color(0xfff5f6f8),
-      // The AppBar is now part of the shell, so it's consistent.
       appBar: null,
       // The drawer for mobile view.
       drawer: isWide
           ? null
           : Builder(
-            builder: (drawerContext) {
-              return Drawer(
-                      child: Column(
-              children: [
-
-                // Sidebar widget
-                Expanded(
-                  child: SidebarWidget(
-                    selectedItem: _selectedItemName,
-                    onSelectItem: _onSelectItem,
+          builder: (drawerContext) {
+            return Drawer(
+              child: Column(
+                children: [
+                  // Sidebar widget
+                  Expanded(
+                    child: SidebarWidget(
+                      selectedItem: _selectedItemName,
+                      onSelectItem: _onSelectItem,
+                      userRole: _userRole, // Pass user role
+                    ),
                   ),
-                ),
-                // Logout at bottom
-                const Divider(height: 1),
-                ListTile(
-                  leading: const Icon(Icons.logout, color: Colors.red),
-                  title: const Text(
-                    'Logout',
-                    style: TextStyle(color: Colors.red),
+                  // Logout at bottom
+                  const Divider(height: 1),
+                  ListTile(
+                    leading: const Icon(Icons.logout, color: Colors.red),
+                    title: const Text(
+                      'Logout',
+                      style: TextStyle(color: Colors.red),
+                    ),
+                    onTap: _handleLogout,
                   ),
-                  onTap: _handleLogout,
-                ),
-              ],
-                      ),
-                    );
-            }
-          ),
+                ],
+              ),
+            );
+          }
+      ),
       body: Row(
         children: [
           // Show sidebar permanently on wide screens.
@@ -284,12 +316,12 @@ class _DashboardShellState extends State<DashboardShell> {
               width: 250,
               child: Column(
                 children: [
-
                   // Sidebar menu
                   Expanded(
                     child: SidebarWidget(
                       selectedItem: _selectedItemName,
                       onSelectItem: _onSelectItem,
+                      userRole: _userRole, // Pass user role
                     ),
                   ),
                 ],
@@ -313,7 +345,6 @@ class _DashboardShellState extends State<DashboardShell> {
     );
   }
 
-  /// Builds the persistent top header with user info.
   /// Builds the persistent top header with user info, adding a hamburger menu on narrow screens.
   Widget _buildHeader() {
     return LayoutBuilder(
@@ -327,30 +358,27 @@ class _DashboardShellState extends State<DashboardShell> {
 
         return Container(
           padding: EdgeInsets.symmetric(
-            vertical: isMobile ? 8 : (isInternalNarrow ? 12 : 17.5), // Slightly less vertical padding for mobile
+            vertical: isMobile ? 8 : (isInternalNarrow ? 12 : 17.5),
           ),
           decoration: const BoxDecoration(
             color: Colors.white,
             border: Border(bottom: BorderSide(color: Color(0xFFEEEEEE), width: 2)),
           ),
           child: Row(
-            // Change mainAxisAlignment to start, Expanded widgets will handle spacing
             mainAxisAlignment: MainAxisAlignment.start,
             children: [
-              // --- HAMBURGER ICON ADDED HERE FOR MOBILE VIEW ---
+              // Hamburger icon for mobile view
               if (isMobile)
                 IconButton(
-                  icon: const Icon(Icons.menu, color: Colors.grey), // Match existing icon color
+                  icon: const Icon(Icons.menu, color: Colors.grey),
                   onPressed: () {
-                    _scaffoldKey.currentState?.openDrawer(); // Opens the drawer
+                    _scaffoldKey.currentState?.openDrawer();
                   },
                   tooltip: 'Open menu',
                 ),
-              // --- END HAMBURGER ICON ---
 
               Expanded(
                 child: Padding(
-                  // Adjust left padding: less if hamburger is present, otherwise existing padding
                   padding: EdgeInsets.only(left: isMobile ? 8 : (isInternalNarrow ? 12 : 24)),
                   child: Text(
                     "Welcome back, $_userName",

@@ -2,8 +2,8 @@ class DetailedSaleItem {
   final String id;
   final String saleId;
   final DateTime saleDate;
-  final String customerId;
-  final String customerName;
+  final String? customerId;
+  final String? customerName;
   final String productId;
   final String productName;
   final String sku;
@@ -32,8 +32,8 @@ class DetailedSaleItem {
       id: json['id'],
       saleId: json['sale_id'],
       saleDate: DateTime.parse(json['sale_date']),
-      customerId: json['customer_id'],
-      customerName: json['customer_name'],
+      customerId: json['customer_id'] as String?,
+      customerName: json['customer_name'] as String?,
       productId: json['product_id'],
       productName: json['product_name'],
       sku: json['sku'],

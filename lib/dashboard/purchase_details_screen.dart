@@ -1,5 +1,5 @@
 // ============================================
-// PURCHASE DETAILS SCREEN
+// PURCHASE DETAILS SCREEN - FIXED
 // lib/screens/purchase_details_screen.dart
 // ============================================
 
@@ -137,7 +137,8 @@ class _PurchaseDetailsScreenState extends State<PurchaseDetailsScreen> {
   }
 
   Widget _buildSaleInfoCard(bool isMobile) {
-    final saleDate = DateTime.parse(_sale!.saleDate as String);
+    // FIX: saleDate is already a DateTime, no need to parse it
+    final saleDate = _sale!.saleDate;
 
     return Container(
       padding: const EdgeInsets.all(20),

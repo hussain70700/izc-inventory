@@ -29,6 +29,7 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
   List<DetailedSaleItem> _items = [];
   bool _isLoading = true;
   String? _error;
+
   @override
   void initState() {
     super.initState();
@@ -37,15 +38,37 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
 
   Future<void> _loadReceiptData() async {
     try {
+      print('📱 Starting to load receipt data for sale ID: ${widget.saleId}');
+
+      // Try to get sale first
+      print('📱 Fetching sale...');
       final sale = await _supabaseService.getSaleById(widget.saleId);
+      print('✅ Sale fetched successfully: ${sale?.id}');
+
+      // Then try to get items
+      print('📱 Fetching sale items...');
       final items = await _supabaseService.getDetailedSaleItems(widget.saleId);
+      print('✅ Items fetched successfully: ${items.length} items');
+
+      // Print first item details for debugging
+      if (items.isNotEmpty) {
+        final firstItem = items.first;
+        print('📦 First item details:');
+        print('  - Product: ${firstItem.productName}');
+        print('  - Customer: ${firstItem.customerName ?? "NULL"}');
+        print('  - Customer ID: ${firstItem.customerId ?? "NULL"}');
+      }
 
       setState(() {
         _sale = sale;
         _items = items;
         _isLoading = false;
       });
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('❌ ERROR loading receipt data:');
+      print('Error: $e');
+      print('StackTrace: $stackTrace');
+
       setState(() {
         _error = e.toString();
         _isLoading = false;
@@ -56,7 +79,7 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
   Future<pw.Document> _generatePdf() async {
     final pdf = pw.Document();
     final dateFormat = DateFormat('yyyy-MM-dd HH:mm:ss');
-    final customerName = _items.isNotEmpty ? _items.first.customerName : 'N/A';
+    final customerName = _items.isNotEmpty ? (_items.first.customerName ?? 'Guest') : 'N/A';
 
     pdf.addPage(
       pw.Page(
@@ -279,6 +302,7 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
       );
     } catch (e) {
       if (mounted) {
+        print('❌ Print error: $e');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error printing receipt: $e'),
@@ -305,6 +329,7 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
       );
     } catch (e) {
       if (mounted) {
+        print('❌ Share error: $e');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error sharing receipt: $e'),
@@ -340,18 +365,41 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
           ? const Center(child: CircularProgressIndicator())
           : _error != null
           ? Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.error_outline, size: 64, color: Colors.red),
-            const SizedBox(height: 16),
-            Text('Error: $_error'),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Go Back'),
-            ),
-          ],
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.error_outline, size: 64, color: Colors.red),
+              const SizedBox(height: 16),
+              const Text(
+                'Error Loading Receipt',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.red.shade200),
+                ),
+                child: Text(
+                  _error!,
+                  style: const TextStyle(fontSize: 12),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Go Back'),
+              ),
+            ],
+          ),
         ),
       )
           : Center(
@@ -413,7 +461,7 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
     if (_sale == null || _items.isEmpty) return const SizedBox.shrink();
 
     final dateFormat = DateFormat('yyyy-MM-dd HH:mm:ss');
-    final customerName = _items.first.customerName;
+    final customerName = _items.first.customerName ?? 'Guest';
 
     return _section(
       Column(
@@ -512,10 +560,10 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
   }
 
   Widget _footer() {
-    return Padding(
-      padding: const EdgeInsets.all(16),
+    return const Padding(
+      padding: EdgeInsets.all(16),
       child: Column(
-        children: const [
+        children: [
           Text(
             'THANK YOU FOR YOUR PURCHASE!',
             style: TextStyle(

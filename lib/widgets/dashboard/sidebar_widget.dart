@@ -1,17 +1,55 @@
 import 'package:flutter/material.dart';
-//hello
+
 class SidebarWidget extends StatelessWidget {
   final String selectedItem;
   final ValueChanged<String> onSelectItem;
+  final String userRole; // Add userRole parameter
 
   const SidebarWidget({
     super.key,
     required this.selectedItem,
     required this.onSelectItem,
+    required this.userRole, // Required parameter
   });
+
+  // Define which pages each role can access
+  List<Map<String, dynamic>> _getMenuItemsForRole() {
+    final allMenuItems = [
+      {'icon': Icons.home_outlined, 'label': 'Sales'},
+      {'icon': Icons.dashboard, 'label': 'Dashboard'},
+      {'icon': Icons.analytics_outlined, 'label': 'Reports'},
+      {'icon': Icons.location_on_outlined, 'label': 'Tracking'},
+      {'icon': Icons.people_alt_outlined, 'label': 'Staff'},
+      {'icon': Icons.inventory_outlined, 'label': 'Inventory'},
+      {'icon': Icons.discount, 'label': 'Promo Codes'},
+      {'icon': Icons.person, 'label': 'Customers'},
+    ];
+
+    // Filter based on role
+    switch (userRole.toLowerCase()) {
+      case 'admin':
+      // Admin sees all pages
+        return allMenuItems;
+
+      case 'manager':
+      // Manager sees: Sales, Customers, Inventory
+        return allMenuItems.where((item) {
+          return ['Sales', 'Customers', 'Inventory'].contains(item['label']);
+        }).toList();
+
+      case 'user':
+      default:
+      // User sees only Sales
+        return allMenuItems.where((item) {
+          return item['label'] == 'Sales';
+        }).toList();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final menuItems = _getMenuItemsForRole();
+
     return LayoutBuilder(
       builder: (context, constraints) {
         final bool isNarrow = constraints.maxWidth < 200;
@@ -57,16 +95,13 @@ class SidebarWidget extends StatelessWidget {
               Expanded(
                 child: ListView(
                   padding: EdgeInsets.only(top: isNarrow ? 12 : 20),
-                  children: [
-                    _sidebarItem(Icons.dashboard, "Dashboard", isNarrow),
-                    _sidebarItem(Icons.home_outlined, 'Sales', isNarrow),
-                    _sidebarItem(Icons.analytics_outlined, "Reports", isNarrow),
-                    _sidebarItem(Icons.location_on_outlined, "Tracking", isNarrow),
-                    _sidebarItem(Icons.people_alt_outlined, "Staff", isNarrow),
-                    _sidebarItem(Icons.inventory_outlined, "Inventory", isNarrow),
-                    _sidebarItem(Icons.discount, "Promo Codes", isNarrow),
-                    _sidebarItem(Icons.person, "Customers", isNarrow),
-                  ],
+                  children: menuItems.map((item) {
+                    return _sidebarItem(
+                      item['icon'] as IconData,
+                      item['label'] as String,
+                      isNarrow,
+                    );
+                  }).toList(),
                 ),
               ),
 
