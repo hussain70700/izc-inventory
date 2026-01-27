@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:izc_inventory/dashboard/receipt_page.dart';
+import 'package:izc_inventory/services/sms_service.dart';
 import '../models/cart_item_model.dart';
 import '../models/customer_model.dart';
 import '../models/product_model.dart';
 import '../models/promo_code_model.dart';
 import '../services/supabase_service.dart';
 import '../services/promo_code_service.dart';
-
+import 'package:url_launcher/url_launcher.dart';
 class SalesScreen extends StatefulWidget {
   const SalesScreen({super.key});
 
@@ -17,32 +19,22 @@ class SalesScreen extends StatefulWidget {
 class _SalesScreenState extends State<SalesScreen> {
   final _supabaseService = SupabaseService();
   final _promoCodeService = PromoCodeService();
-
-  // Cart items
   final List<CartItem> cart = [];
-
-  // Search and products
   final TextEditingController _searchController = TextEditingController();
   List<Product> _searchResults = [];
   bool _isSearching = false;
   bool _showSearchResults = false;
-
-  // Customer
   final TextEditingController _customerNameController = TextEditingController();
   final TextEditingController _customerPhoneController = TextEditingController();
   Customer? _selectedCustomer;
   bool _isLoadingCustomer = false;
-
-  // Promo Code
   final TextEditingController _promoCodeController = TextEditingController();
   PromoCodeValidation? _appliedPromo;
   bool _isValidatingPromo = false;
-
-  // Payment
   String? _selectedPaymentMethod;
-
+  final TextEditingController _advancePaymentController = TextEditingController();
+  double _advancePayment = 0.0;
   double get subtotal => cart.fold(0, (sum, item) => sum + item.price * item.qty);
-
   double get discount {
     double baseDiscount = 0.0;
     if (_appliedPromo != null && _appliedPromo!.isValid) {
@@ -50,16 +42,17 @@ class _SalesScreenState extends State<SalesScreen> {
     }
     return baseDiscount;
   }
-
   double get tax => (subtotal - discount) * 0.085;
   double get total => subtotal - discount + tax;
-
+  double get remainingAmount => total - _advancePayment;
+  String? _originalSaleIdForExchange; // ✅ Track which invoice is being exchanged
   @override
   void dispose() {
     _searchController.dispose();
     _customerNameController.dispose();
     _customerPhoneController.dispose();
     _promoCodeController.dispose();
+    _advancePaymentController.dispose();
     super.dispose();
   }
 
@@ -198,9 +191,129 @@ class _SalesScreenState extends State<SalesScreen> {
   }
 
   void _handlePaymentMethodSelected(String methodLabel) {
-    setState(() => _selectedPaymentMethod = methodLabel);
+    setState(() {
+      _selectedPaymentMethod = methodLabel;
+      // Clear advance payment when switching payment methods
+      if (methodLabel != 'COD') {
+        _advancePaymentController.clear();
+        _advancePayment = 0.0;
+      }
+    });
   }
 
+  void _updateAdvancePayment(String value) {
+    setState(() {
+      final inputAmount = double.tryParse(value) ?? 0.0;
+
+      // Ensure advance payment doesn't exceed total
+      if (inputAmount > total) {
+        _advancePayment = total;
+        _advancePaymentController.text = total.toStringAsFixed(2);
+        _showError('Advance payment cannot exceed total amount of \$${total.toStringAsFixed(2)}');
+      } else {
+        _advancePayment = inputAmount;
+      }
+    });
+  }
+
+  Future<void> _sendWhatsAppMessage({
+    required String phoneNumber,
+    required String invoiceId,
+    required double total,
+    String? paymentMethod,
+    double? codAmount,
+    List<CartItem>? items,  // ✅ Add cart items parameter
+    double? advancePayment,  // ✅ Add advance payment parameter
+  })
+  async {
+    try {
+      // Clean phone number - remove all non-digits except leading +
+      String cleanPhone = phoneNumber.replaceAll(RegExp(r'[^\d+]'), '');
+
+      // If phone doesn't start with +, add country code
+      // Adjust this based on your region (e.g., +92 for Pakistan)
+      if (!cleanPhone.startsWith('+')) {
+        // Remove leading zeros if present
+        cleanPhone = cleanPhone.replaceFirst(RegExp(r'^0+'), '');
+        // Add Pakistan country code (change this to your country code)
+        cleanPhone = '+92$cleanPhone';
+      }
+
+      // Validate phone number
+      if (cleanPhone.length < 10) {
+        if (mounted) {
+          _showError('Invalid phone number format');
+        }
+        return;
+      }
+
+      // Build items list
+      String itemsList = '';
+      if (items != null && items.isNotEmpty) {
+        itemsList = '\n\nItems:\n';
+        for (var item in items) {
+          itemsList += '- ${item.name} x${item.qty} @ \$${item.price.toStringAsFixed(2)} = \$${(item.price * item.qty).toStringAsFixed(2)}';
+        }
+      }
+
+      // Build advance payment line (only if advance was made)
+      String advanceLine = '';
+      if (advancePayment != null && advancePayment > 0) {
+        advanceLine = '\n*Advance Paid:* \$${advancePayment.toStringAsFixed(2)}';
+      }
+
+      // Build COD line (only if there's a remaining COD amount)
+      String codLine = '';
+      if (codAmount != null && codAmount > 0) {
+        codLine = '\n*COD Amount:* \$${codAmount.toStringAsFixed(2)}';
+      }
+
+      // Format the message
+      final message = '''*Izzahs collection*\n *Sale Receipt*
+
+*Invoice:* $invoiceId$itemsList
+----------------------------------------------
+*Subtotal:* Rs ${total.toStringAsFixed(2)}
+*Payment Method:* ${paymentMethod ?? 'N/A'}$advanceLine$codLine
+
+Thank you for your purchase!''';
+
+      // Create WhatsApp URL
+      final encodedMessage = Uri.encodeComponent(message);
+      final whatsappUrl = Uri.parse('https://wa.me/$cleanPhone?text=$encodedMessage');
+
+      print('📱 Attempting to open WhatsApp...');
+      print('📱 Phone: $cleanPhone');
+      print('📱 Message: $message');
+
+      // Try to launch WhatsApp
+      final canLaunch = await canLaunchUrl(whatsappUrl);
+
+      if (canLaunch) {
+        final launched = await launchUrl(
+          whatsappUrl,
+          mode: LaunchMode.externalApplication,
+        );
+
+        if (!launched && mounted) {
+          _showError('Could not open WhatsApp');
+        }
+      } else {
+        if (mounted) {
+          _showError('WhatsApp is not installed or phone number is invalid');
+        }
+      }
+
+    } catch (e) {
+      print('❌ WhatsApp error: $e');
+      if (mounted) {
+        _showError('Failed to open WhatsApp: $e');
+      }
+    }
+  }
+
+
+  // Process sale
   // Process sale
   Future<void> _processSale() async {
     if (cart.isEmpty) {
@@ -218,6 +331,22 @@ class _SalesScreenState extends State<SalesScreen> {
       return;
     }
 
+    // Validate advance payment for COD
+    if (_selectedPaymentMethod == 'COD' && _advancePayment > total) {
+      _showError('Advance payment (\$${_advancePayment.toStringAsFixed(2)}) cannot exceed total amount (\$${total.toStringAsFixed(2)})');
+      return;
+    }
+
+    // Additional check to ensure remaining amount is not negative
+    if (_selectedPaymentMethod == 'COD' && remainingAmount < 0) {
+      _showError('Invalid advance payment amount');
+      setState(() {
+        _advancePayment = 0.0;
+        _advancePaymentController.clear();
+      });
+      return;
+    }
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -228,7 +357,18 @@ class _SalesScreenState extends State<SalesScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('Customer: ${_selectedCustomer!.name}'),
+            Text('Phone: ${_selectedCustomer!.phone}'),
             Text('Total Amount: \$${total.toStringAsFixed(2)}'),
+            if (_selectedPaymentMethod == 'COD' && _advancePayment > 0)
+              Text('Advance Payment: \$${_advancePayment.toStringAsFixed(2)}'),
+            if (_selectedPaymentMethod == 'COD')
+              Text(
+                'COD Amount: \$${remainingAmount.toStringAsFixed(2)}',
+                style: const TextStyle(
+                  color: Color(0xffFE691E),
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             if (_appliedPromo != null && _appliedPromo!.isValid)
               Text(
                 'Promo Applied: ${_appliedPromo!.discountPercentage}% OFF',
@@ -255,8 +395,29 @@ class _SalesScreenState extends State<SalesScreen> {
 
     if (confirmed != true) return;
 
+    // Show loading dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: CircularProgressIndicator(color: Color(0xffFE691E)),
+      ),
+    );
+
     try {
-      final saleId = await _supabaseService.createSale(  // ✅ Capture the return value
+      // Determine status based on payment method
+      String status;
+      if (_selectedPaymentMethod == 'COD') {
+        if (_advancePayment >= total) {
+          status = 'Completed';
+        } else {
+          status = 'In Process';
+        }
+      } else {
+        status = 'Completed';
+      }
+
+      final saleId = await _supabaseService.createSale(
         customerId: _selectedCustomer!.id!,
         items: cart,
         subtotal: subtotal,
@@ -264,27 +425,497 @@ class _SalesScreenState extends State<SalesScreen> {
         tax: tax,
         total: total,
         paymentMethod: _selectedPaymentMethod!,
+        advancePayment: _selectedPaymentMethod == 'COD' ? _advancePayment : null,
+        status: status,
       );
 
+
+
+      // Close loading dialog
+      if (mounted && Navigator.canPop(context)) {
+        Navigator.pop(context);
+      }
+
       _showSuccess('Sale completed successfully!');
+      final customerPhone = _selectedCustomer!.phone;
+      final paymentMethod = _selectedPaymentMethod!;
+      final saleTotal = total;  // ✅ Store total before clearing cart
+      final codAmountToSend = _selectedPaymentMethod == 'COD' ? remainingAmount : null;
+      final cartItemsCopy = List<CartItem>.from(cart);  // ✅ Copy cart items
+      final advancePaymentAmount = _advancePayment > 0 ? _advancePayment : null;  // ✅ Only if > 0
 
       setState(() {
         cart.clear();
         _clearCustomerSelection();
         _selectedPaymentMethod = null;
+        _advancePaymentController.clear();
+        _advancePayment = 0.0;
       });
 
-      // Now navigate with the saleId
-      if (saleId != null) {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => ReceiptScreen(saleId: saleId),
-          ),
+      if (saleId != null && mounted) {
+        // Send WhatsApp message with stored values
+        await _sendWhatsAppMessage(
+          phoneNumber: customerPhone,
+          invoiceId: saleId,
+          total: saleTotal,
+          paymentMethod: paymentMethod,
+          codAmount: codAmountToSend,
+          items: cartItemsCopy,  // ✅ Pass cart items
+          advancePayment: advancePaymentAmount,  // ✅ Pass advance payment (only if > 0)
         );
+
+
+
+        if (saleId != null && mounted) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => ReceiptScreen(saleId: saleId),
+            ),
+          );
+        }
+      }} catch (e) {
+      // Close loading dialog
+      if (mounted && Navigator.canPop(context)) {
+        Navigator.pop(context);
       }
-    } catch (e) {
       _showError('Failed to process sale: $e');
+    }
+  }
+
+  // ✅ NEW: Process Return
+  // ✅ UPDATED: Process Return - cleaner workflow
+  // ✅ UPDATED: Process Return - adds items to cart for partial returns
+  Future<void> _processReturn() async {
+    // Check if cart is empty
+    if (cart.isNotEmpty) {
+      final clearCart = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: Colors.white,
+          title: const Text('Clear Cart?'),
+          content: const Text('Your cart is not empty. Do you want to clear it before processing a return?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+              ),
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Clear Cart', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
+      );
+
+      if (clearCart != true) return;
+
+      setState(() {
+        cart.clear();
+      });
+    }
+
+    final invoiceController = TextEditingController();
+
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        title: const Text('Process Return'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Enter the invoice number of the sale to return:'),
+            const SizedBox(height: 16),
+            TextField(
+              controller: invoiceController,
+              decoration: const InputDecoration(
+                labelText: 'Invoice Number',
+                hintText: 'IZC-0126-00001',
+                border: OutlineInputBorder(),
+              ),
+              textCapitalization: TextCapitalization.characters,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (invoiceController.text.trim().isEmpty) {
+                Navigator.pop(context);
+                return;
+              }
+              Navigator.pop(context, {'invoiceId': invoiceController.text.trim()});
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Continue'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == null) return;
+
+    try {
+      // Show loading
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(color: Color(0xffFE691E)),
+        ),
+      );
+
+      // Get the sale
+      final sale = await _supabaseService.getSaleById(result['invoiceId']);
+      setState(() {
+        _originalSaleIdForExchange = result['invoiceId']; // ✅ Store the original invoice ID
+      });
+      final items = await _supabaseService.getDetailedSaleItems(result['invoiceId']);
+
+      Navigator.pop(context); // Close loading
+
+      if (items.isEmpty) {
+        _showError('No items found for this invoice');
+        return;
+      }
+
+      // Show return information
+      final proceed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: Colors.white,
+          title: const Text('Return Items'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Invoice: ${result['invoiceId']}'),
+                Text('Customer: ${items.first.customerName ?? "N/A"}'),
+                Text('Original Total: \$${sale.total.toStringAsFixed(2)}'),
+                const SizedBox(height: 16),
+                const Text('Items in sale:', style: TextStyle(fontWeight: FontWeight.bold)),
+                ...items.map((item) => Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Text('• ${item.productName} x${item.quantity} - \$${item.total.toStringAsFixed(2)}'),
+                )),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.red.shade50,
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: Colors.red.shade200),
+                  ),
+                  child: const Text(
+                    'ℹ️ Items will be added to cart. Adjust quantities for partial return, then click "Process Return" button below.',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Add to Cart'),
+            ),
+          ],
+        ),
+      );
+
+      if (proceed != true) return;
+
+      // Set the customer from the original sale
+      setState(() {
+        _selectedCustomer = Customer(
+          id: sale.customerId,
+          name: items.first.customerName ?? "Unknown",
+          phone:  "Return Customer",
+        );
+      });
+
+      // Add items to cart
+      for (var item in items) {
+        // Get fresh product data
+        final products = await _supabaseService.searchProducts(item.sku);
+        if (products.isNotEmpty) {
+          final product = products.first;
+
+          // Check if item already in cart
+          final existingIndex = cart.indexWhere((cartItem) => cartItem.productId == product.id);
+
+          if (existingIndex != -1) {
+            // Update quantity if already in cart
+            setState(() {
+              cart[existingIndex].qty += item.quantity;
+            });
+          } else {
+            // Add new item to cart (for return, we don't check stock)
+            setState(() {
+              cart.add(CartItem(
+                productId: product.id,
+                name: product.name,
+                sku: product.sku,
+                price: product.price,
+                qty: item.quantity,
+                availableStock: product.stock,
+              ));
+            });
+          }
+        }
+      }
+
+      _showSuccess(
+        'Return mode activated! Items added to cart. Reduce quantities for partial return, then click "Process Return" button.',
+      );
+
+    } catch (e) {
+      if (Navigator.canPop(context)) {
+        Navigator.pop(context);
+      }
+      _showError('Failed to load return: $e');
+    }
+  }
+
+  // ✅ NEW: Process Exchange
+  // ✅ UPDATED: Process Exchange - adds items to cart
+  Future<void> _processExchange() async {
+    // Check if cart is empty
+    if (cart.isNotEmpty) {
+      final clearCart = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: Colors.white,
+          title: const Text('Clear Cart?'),
+          content: const Text('Your cart is not empty. Do you want to clear it before processing an exchange?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orange,
+              ),
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Clear Cart', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
+      );
+
+      if (clearCart != true) return;
+
+      setState(() {
+        cart.clear();
+      });
+    }
+
+    final invoiceController = TextEditingController();
+
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        title: const Text('Process Exchange'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Enter the invoice number for the exchange:'),
+            const SizedBox(height: 16),
+            TextField(
+              controller: invoiceController,
+              decoration: const InputDecoration(
+                labelText: 'Invoice Number',
+                hintText: 'IZC-0126-00001',
+                border: OutlineInputBorder(),
+              ),
+              textCapitalization: TextCapitalization.characters,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (invoiceController.text.trim().isEmpty) {
+                Navigator.pop(context);
+                return;
+              }
+              Navigator.pop(context, {'invoiceId': invoiceController.text.trim()});
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orange,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Continue'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == null) return;
+
+    try {
+      // Show loading
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(color: Color(0xffFE691E)),
+        ),
+      );
+
+      // Get the sale
+      final sale = await _supabaseService.getSaleById(result['invoiceId']);
+      final items = await _supabaseService.getDetailedSaleItems(result['invoiceId']);
+
+      Navigator.pop(context); // Close loading
+
+      if (items.isEmpty) {
+        _showError('No items found for this invoice');
+        return;
+      }
+
+      // Show exchange information
+      final proceed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: Colors.white,
+          title: const Text('Exchange Items'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Original Invoice: ${result['invoiceId']}'),
+                Text('Customer: ${items.first.customerName ?? "N/A"}'),
+                Text('Original Total: \$${sale.total.toStringAsFixed(2)}'),
+                const SizedBox(height: 16),
+                const Text('Original items:', style: TextStyle(fontWeight: FontWeight.bold)),
+                ...items.map((item) => Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Text('• ${item.productName} x${item.quantity}'),
+                )),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade50,
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: Colors.orange.shade200),
+                  ),
+                  child: const Text(
+                    'ℹ️ These items will be added to your cart. Modify quantities or add new items, then complete the sale.',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orange,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Add to Cart'),
+            ),
+          ],
+        ),
+      );
+
+      if (proceed != true) return;
+
+      // Set the customer from the original sale
+      setState(() {
+        _selectedCustomer = Customer(
+          id: sale.customerId,
+          name: items.first.customerName ?? "Unknown",
+          phone: items.first.customerName ?? "Exchange Customer",
+        );
+      });
+
+      // Add items to cart
+      for (var item in items) {
+        // Get fresh product data to check current stock
+        final products = await _supabaseService.searchProducts(item.sku);
+        if (products.isNotEmpty) {
+          final product = products.first;
+
+          // Check if item already in cart
+          final existingIndex = cart.indexWhere((cartItem) => cartItem.productId == product.id);
+
+          if (existingIndex != -1) {
+            // Update quantity if already in cart
+            final newQty = cart[existingIndex].qty + item.quantity;
+            if (newQty <= product.stock) {
+              setState(() {
+                cart[existingIndex].qty = newQty;
+              });
+            } else {
+              _showError('${product.name}: Cannot add ${item.quantity} more. Available stock: ${product.stock}');
+            }
+          } else {
+            // Add new item to cart
+            if (item.quantity <= product.stock) {
+              setState(() {
+                cart.add(CartItem(
+                  productId: product.id,
+                  name: product.name,
+                  sku: product.sku,
+                  price: product.price,
+                  qty: item.quantity,
+                  availableStock: product.stock,
+                ));
+              });
+            } else {
+              _showError('${product.name}: Requested ${item.quantity} but only ${product.stock} in stock');
+            }
+          }
+        }
+      }
+
+      // Mark original sale as exchanged
+      await _supabaseService.processExchange(result['invoiceId']);
+
+      _showSuccess(
+        'Exchange mode activated! Original items added to cart. Adjust quantities or add new items, then complete the sale.',
+      );
+
+    } catch (e) {
+      if (Navigator.canPop(context)) {
+        Navigator.pop(context);
+      }
+      _showError('Failed to process exchange: $e');
     }
   }
 
@@ -307,7 +938,280 @@ class _SalesScreenState extends State<SalesScreen> {
       ),
     );
   }
+// Complete the return process with items in cart
+  // Complete the return - generates NEGATIVE invoice
+  Future<void> _completeReturn() async {
+    if (cart.isEmpty) {
+      _showError('Cart is empty');
+      return;
+    }
 
+    // Calculate return total
+    final returnSubtotal = cart.fold<double>(0, (sum, item) => sum + item.price * item.qty);
+    final returnTax = returnSubtotal * 0.085;
+    final returnTotal = returnSubtotal + returnTax;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        title: const Text('Confirm Return'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Customer: ${_selectedCustomer!.name}'),
+            const SizedBox(height: 8),
+            const Text('Items to return:', style: TextStyle(fontWeight: FontWeight.bold)),
+            ...cart.map((item) => Text('• ${item.name} x${item.qty}')),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.red.shade50,
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(color: Colors.red.shade200),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    '⚠️ Stock will be restored for these items.',
+                    style: TextStyle(color: Colors.red, fontSize: 12),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Refund Amount: \$${returnTotal.toStringAsFixed(2)}',
+                    style: const TextStyle(
+                      color: Colors.red,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Process Return'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      // Create NEGATIVE sale (credit note) for the return
+      final returnSaleId = await _supabaseService.createSale(
+        customerId: _selectedCustomer!.id!,
+        items: cart,
+        subtotal: -returnSubtotal, // ✅ NEGATIVE values
+        discount: 0.0,
+        tax: -returnTax,
+        total: -returnTotal,
+        paymentMethod: 'Return', // ✅ Mark as return
+        status: 'Returned',
+        notes: 'Return - Credit Note',
+      );
+
+      // Restore stock for each item
+      for (var item in cart) {
+        final product = await _supabaseService.searchProducts(item.sku);
+        if (product.isNotEmpty) {
+          final currentProduct = product.first;
+          final newStock = currentProduct.stock + item.qty;
+
+          await _supabaseService.updateProductStock(
+            currentProduct.id,
+            newStock,
+            'Return - Credit Note',
+          );
+        }
+      }
+
+      _showSuccess('Return processed! Credit note generated and stock restored.');
+
+      setState(() {
+        cart.clear();
+        _clearCustomerSelection();
+      });
+
+      // Navigate to receipt for the return/credit note
+      if (returnSaleId != null) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ReceiptScreen(saleId: returnSaleId),
+          ),
+        );
+      }
+
+    } catch (e) {
+      _showError('Failed to process return: $e');
+    }
+  }
+
+// Complete the exchange (just process as normal sale)
+  // Complete exchange - UPDATE the same invoice
+  Future<void> _completeExchange() async {
+    if (cart.isEmpty) {
+      _showError('Cart is empty');
+      return;
+    }
+
+    if (_selectedPaymentMethod == null) {
+      _showError('Please select a payment method');
+      return;
+    }
+
+    // Get the original sale ID (stored when exchange was initiated)
+    // You'll need to add a state variable to track this
+    if (_originalSaleIdForExchange == null) {
+      _showError('Original sale ID not found');
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        title: const Text('Confirm Exchange'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Original Invoice: $_originalSaleIdForExchange'),
+            Text('Customer: ${_selectedCustomer!.name}'),
+            Text('New Total: \$${total.toStringAsFixed(2)}'),
+            const SizedBox(height: 8),
+            const Text('New Items:', style: TextStyle(fontWeight: FontWeight.bold)),
+            ...cart.map((item) => Text('• ${item.name} x${item.qty}')),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.orange.shade50,
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(color: Colors.orange.shade200),
+              ),
+              child: const Text(
+                'ℹ️ Original invoice will be updated with new items.',
+                style: TextStyle(fontSize: 12),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orange,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Confirm Exchange'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      // 1. Get original sale items to restore their stock
+      final originalItems = await _supabaseService.getDetailedSaleItems(_originalSaleIdForExchange!);
+
+      // 2. Restore stock for original items
+      for (var item in originalItems) {
+        final product = await _supabaseService.searchProducts(item.sku);
+        if (product.isNotEmpty) {
+          final currentProduct = product.first;
+          final newStock = currentProduct.stock + item.quantity;
+
+          await _supabaseService.updateProductStock(
+            currentProduct.id,
+            newStock,
+            'Exchange - Returning original items',
+          );
+        }
+      }
+
+      // 3. Delete old sale_items
+      await _supabaseService.deleteSaleItems(_originalSaleIdForExchange!);
+
+      // 4. Update the sale with new totals
+      await _supabaseService.updateSale(
+        saleId: _originalSaleIdForExchange!,
+        subtotal: subtotal,
+        discount: discount,
+        tax: tax,
+        total: total,
+        paymentMethod: _selectedPaymentMethod!,
+        advancePayment: _selectedPaymentMethod == 'COD' ? _advancePayment : null,
+        status: 'Exchanged',
+      );
+
+      // 5. Add new sale_items
+      for (var item in cart) {
+        await _supabaseService.addSaleItem(
+          saleId: _originalSaleIdForExchange!,
+          productId: item.productId,
+          quantity: item.qty,
+          price: item.price,
+        );
+
+        // Deduct stock for new items
+        final product = await _supabaseService.searchProducts(item.sku);
+        if (product.isNotEmpty) {
+          final currentProduct = product.first;
+          final newStock = currentProduct.stock - item.qty;
+
+          await _supabaseService.updateProductStock(
+            currentProduct.id,
+            newStock,
+            'Exchange - New items',
+          );
+        }
+      }
+
+      _showSuccess('Exchange completed! Invoice $_originalSaleIdForExchange updated.');
+
+      setState(() {
+        cart.clear();
+        _clearCustomerSelection();
+        _selectedPaymentMethod = null;
+        _advancePaymentController.clear();
+        _advancePayment = 0.0;
+        _originalSaleIdForExchange = null; // Clear the stored ID
+      });
+
+      // Navigate to updated receipt
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ReceiptScreen(saleId: _originalSaleIdForExchange!),
+        ),
+      );
+
+    } catch (e) {
+      _showError('Failed to process exchange: $e');
+    }
+  }
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
@@ -447,11 +1351,9 @@ class _SalesScreenState extends State<SalesScreen> {
                   ),
                 ),
               ),
-              // Replace this entire SizedBox(...) with the code below
-              Flexible(                     // ← Use Flexible instead of SizedBox for width control
+              Flexible(
                 child: Container(
-                  width: double.infinity,               // You can keep a max width, or use double.infinity
-
+                  width: double.infinity,
                   decoration: const BoxDecoration(
                     color: Colors.white,
                     boxShadow: [
@@ -465,18 +1367,6 @@ class _SalesScreenState extends State<SalesScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // Optional: Add a header to match left side
-                      // Padding(
-                      //   padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                      //   child: Text(
-                      //     'Order Summary',
-                      //     style: Theme.of(context).textTheme.titleLarge!.copyWith(
-                      //       fontWeight: FontWeight.bold,
-                      //     ),
-                      //   ),
-                      // ),
-
-                      // This is the key: Expanded + SingleChildScrollView
                       Expanded(
                         child: SingleChildScrollView(
                           physics: const BouncingScrollPhysics(),
@@ -566,7 +1456,6 @@ class _SalesScreenState extends State<SalesScreen> {
                 itemBuilder: (context, index) {
                   final product = _searchResults[index];
                   return ListTile(
-                    // Updated leading to show product image
                     leading: Container(
                       width: 50,
                       height: 50,
@@ -581,7 +1470,6 @@ class _SalesScreenState extends State<SalesScreen> {
                           product.imageUrl!,
                           fit: BoxFit.cover,
                           errorBuilder: (context, error, stackTrace) {
-                            // Fallback to initial letter if image fails
                             return Container(
                               decoration: BoxDecoration(
                                 color: Colors.blue.shade100,
@@ -698,9 +1586,15 @@ class _SalesScreenState extends State<SalesScreen> {
                     IconButton(
                       icon: const Icon(Icons.remove_circle_outline, color: Colors.grey),
                       onPressed: () {
-                        if (item.qty > 1) {
-                          setState(() => item.qty--);
-                        }
+                        setState(() {
+                          if (item.qty > 1) {
+                            item.qty--;
+                          } else {
+                            // If quantity is 1 and user tries to decrease, remove the item
+                            cart.removeAt(
+                                i); // Remove from the cart list using its index
+                          }
+                        });
                       },
                     ),
                     Text(item.qty.toString(), style: const TextStyle(fontWeight: FontWeight.bold)),
@@ -731,26 +1625,97 @@ class _SalesScreenState extends State<SalesScreen> {
   }
 
   Widget _cartActions() {
+    // Check if we're in return mode (customer name contains "Return")
+    final isReturnMode = _selectedCustomer != null &&
+        _selectedCustomer!.phone.contains('Return Customer');
+    final isExchangeMode = _selectedCustomer != null &&
+        _selectedCustomer!.phone.contains('Exchange Customer');
+
     return Row(
       children: [
-        Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: Colors.grey.shade400, width: 1),
-          ),
-          child: TextButton(
-            style: ButtonStyle(
-              splashFactory: NoSplash.splashFactory,
-              overlayColor: MaterialStateProperty.all(Colors.transparent),
-              foregroundColor: MaterialStateProperty.all(Colors.black),
+        // Show Process Return button when in return mode
+        if (isReturnMode)
+          Expanded(
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.red,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: TextButton.icon(
+                style: ButtonStyle(
+                  splashFactory: NoSplash.splashFactory,
+                  overlayColor: MaterialStateProperty.all(Colors.transparent),
+                  foregroundColor: MaterialStateProperty.all(Colors.white),
+                ),
+                onPressed: cart.isEmpty ? null : _completeReturn,
+                icon: const Icon(Icons.check_circle, size: 18),
+                label: const Text('Process Return', style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
             ),
-            onPressed: () {},
-            child: const Text('Add Note', style: TextStyle(color: Colors.black)),
           ),
-        ),
+
+        // Show Process Exchange button when in exchange mode
+        if (isExchangeMode)
+          Expanded(
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.orange,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: TextButton.icon(
+                style: ButtonStyle(
+                  splashFactory: NoSplash.splashFactory,
+                  overlayColor: MaterialStateProperty.all(Colors.transparent),
+                  foregroundColor: MaterialStateProperty.all(Colors.white),
+                ),
+                onPressed: cart.isEmpty ? null : _completeExchange,
+                icon: const Icon(Icons.check_circle, size: 18),
+                label: const Text('Complete Exchange', style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ),
+          ),
+
+        // Normal buttons when not in return/exchange mode
+        if (!isReturnMode && !isExchangeMode) ...[
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.red.shade300, width: 1),
+            ),
+            child: TextButton.icon(
+              style: ButtonStyle(
+                splashFactory: NoSplash.splashFactory,
+                overlayColor: MaterialStateProperty.all(Colors.transparent),
+                foregroundColor: MaterialStateProperty.all(Colors.red),
+              ),
+              onPressed: _processReturn,
+              icon: const Icon(Icons.keyboard_return, size: 18),
+              label: const Text('Return'),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.orange.shade300, width: 1),
+            ),
+            child: TextButton.icon(
+              style: ButtonStyle(
+                splashFactory: NoSplash.splashFactory,
+                overlayColor: MaterialStateProperty.all(Colors.transparent),
+                foregroundColor: MaterialStateProperty.all(Colors.orange),
+              ),
+              onPressed: _processExchange,
+              icon: const Icon(Icons.swap_horiz, size: 18),
+              label: const Text('Exchange'),
+            ),
+          ),
+        ],
 
         const Spacer(),
+
         Container(
           decoration: BoxDecoration(
             color: Colors.white,
@@ -763,7 +1728,12 @@ class _SalesScreenState extends State<SalesScreen> {
               overlayColor: MaterialStateProperty.all(Colors.transparent),
               foregroundColor: MaterialStateProperty.all(Colors.black),
             ),
-            onPressed: () => setState(cart.clear),
+            onPressed: () {
+              setState(() {
+                cart.clear();
+                _clearCustomerSelection();
+              });
+            },
             child: const Text('Clear Cart', style: TextStyle(color: Colors.red)),
           ),
         ),
@@ -879,7 +1849,7 @@ class _SalesScreenState extends State<SalesScreen> {
 
           if (_selectedCustomer != null) const SizedBox(height: 16),
 
-          // Promo Code Section - Only shown when customer is selected
+          // Promo Code Section
           if (_selectedCustomer != null)
             Card(
               color: Colors.white,
@@ -900,7 +1870,6 @@ class _SalesScreenState extends State<SalesScreen> {
                     ),
                     const SizedBox(height: 12),
 
-                    // Promo Code Input - Show when no promo applied
                     if (_appliedPromo == null || !_appliedPromo!.isValid)
                       Row(
                         children: [
@@ -949,7 +1918,6 @@ class _SalesScreenState extends State<SalesScreen> {
                         ],
                       ),
 
-                    // Applied Promo Display
                     if (_appliedPromo != null && _appliedPromo!.isValid)
                       Container(
                         padding: const EdgeInsets.all(12),
@@ -1011,8 +1979,113 @@ class _SalesScreenState extends State<SalesScreen> {
           _summaryRow('Tax (8.5%)', tax),
           const Divider(),
           _summaryRow('Total Payable', total, bold: true),
+
+          // Show advance payment and remaining amount if COD is selected
+          if (_selectedPaymentMethod == 'COD' && _advancePayment > 0) ...[
+            const SizedBox(height: 8),
+            _summaryRow('Advance Payment', -_advancePayment, color: Colors.green),
+            const Divider(),
+            _summaryRow('COD Amount', remainingAmount, bold: true, color: const Color(0xffFE691E)),
+          ],
+
           const SizedBox(height: 16),
           _paymentButtons(),
+
+          // COD Advance Payment Field
+          if (_selectedPaymentMethod == 'COD') ...[
+            const SizedBox(height: 16),
+            Card(
+              color: Colors.white,
+              margin: EdgeInsets.zero,
+              elevation: 5,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              child: Padding(
+                padding: const EdgeInsets.all(12.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.payment, color: Color(0xffFE691E), size: 20),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'ADVANCE PAYMENT (Optional)',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _advancePaymentController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
+                      ],
+                      onChanged: _updateAdvancePayment,
+                      decoration: InputDecoration(
+                        labelText: 'Enter advance amount',
+                        prefixText: '\$ ',
+                        border: OutlineInputBorder(
+                          borderSide: BorderSide(
+                            color: _advancePayment > total ? Colors.red : Colors.grey,
+                          ),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderSide: BorderSide(
+                            color: _advancePayment > total ? Colors.red : Colors.grey.shade400,
+                          ),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderSide: BorderSide(
+                            color: _advancePayment > total ? Colors.red : const Color(0xffFE691E),
+                            width: 2,
+                          ),
+                        ),
+                        filled: true,
+                        fillColor: Colors.white,
+                        isDense: true,
+                        helperText: 'Max: \$${total.toStringAsFixed(2)}',
+                        helperStyle: TextStyle(
+                          fontSize: 11,
+                          color: _advancePayment > total ? Colors.red : Colors.grey.shade600,
+                        ),
+                        errorText: _advancePayment > total ? 'Exceeds total amount' : null,
+                      ),
+                    ),
+                    if (_advancePayment > 0) ...[
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xffFE691E).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: const Color(0xffFE691E).withOpacity(0.3)),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              'To be collected on delivery:',
+                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+                            ),
+                            Text(
+                              '\$${remainingAmount.toStringAsFixed(2)}',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xffFE691E),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ],
+
           const SizedBox(height: 24),
           SizedBox(
             width: double.infinity,
@@ -1022,10 +2095,21 @@ class _SalesScreenState extends State<SalesScreen> {
                 shape: MaterialStateProperty.all(
                   RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
-                backgroundColor: MaterialStateProperty.all(const Color(0xffFE691E)),
+                backgroundColor: MaterialStateProperty.all(
+                    (_selectedPaymentMethod == 'COD' && _advancePayment > total)
+                        ? Colors.grey // Disabled state
+                        : const Color(0xffFE691E)
+                ),
               ),
-              onPressed: _processSale,
-              child: Text('Charge \$${total.toStringAsFixed(2)}', style: const TextStyle(color: Colors.white)),
+              onPressed: (_selectedPaymentMethod == 'COD' && _advancePayment > total)
+                  ? null // Disable button if advance exceeds total
+                  : _processSale,
+              child: Text(
+                _selectedPaymentMethod == 'COD' && _advancePayment > 0
+                    ? 'Charge \$${_advancePayment.toStringAsFixed(2)} (COD: \$${remainingAmount.toStringAsFixed(2)})'
+                    : 'Charge \$${total.toStringAsFixed(2)}',
+                style: const TextStyle(color: Colors.white),
+              ),
             ),
           )
         ],

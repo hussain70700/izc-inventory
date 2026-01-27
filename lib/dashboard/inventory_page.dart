@@ -11,6 +11,7 @@ import '../services/supabase_service.dart';
 import '../services/session_service.dart';
 import 'package:excel/excel.dart' hide Border;
 import '../utils/file_download.dart';
+import 'dart:typed_data';
 
 class InventoryPage extends StatefulWidget {
   const InventoryPage({super.key});
@@ -32,8 +33,8 @@ class _InventoryPageState extends State<InventoryPage> {
   String? _currentUserRole;
   String? _currentUsername;
   String? _currentUserEmail;
-
-  String _activeFilter = 'Active products';
+  String _sortOrder = 'A-Z';
+  String _activeFilter = 'All Products';
   int _currentPage = 1;
   final int _itemsPerPage = 4;
   final GlobalKey _filterButtonKey = GlobalKey();
@@ -142,22 +143,58 @@ class _InventoryPageState extends State<InventoryPage> {
     }).toList();
   }
 
+
+// Replace the filter-related code in _InventoryPageState
+
+
+
+// Replace the _filteredProducts getter
   List<Product> get _filteredProducts {
     List<Product> filtered;
     switch (_activeFilter) {
-      case 'Out of stock':
-        filtered = _allProducts.where((p) => p.isOutOfStock).toList();
-        break;
       case 'Active products':
         filtered = _allProducts.where((p) => p.isActive).toList();
+        break;
+      case 'Out of Stock':
+        filtered = _allProducts.where((p) => p.isOutOfStock).toList();
+        break;
+      case 'Low Stock':
+        filtered = _allProducts.where((p) => p.isLowStock && !p.isOutOfStock).toList();
         break;
       case 'Inactive products':
         filtered = _allProducts.where((p) => !p.isActive).toList();
         break;
+      case 'All Products':
       default:
         filtered = _allProducts;
     }
-    return _searchProducts(filtered);
+
+    // Apply search filter
+    filtered = _searchProducts(filtered);
+
+    // Apply sorting
+    switch (_sortOrder) {
+      case 'A-Z':
+        filtered.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+        break;
+      case 'Z-A':
+        filtered.sort((a, b) => b.name.toLowerCase().compareTo(a.name.toLowerCase()));
+        break;
+      case 'Price: Low to High':
+        filtered.sort((a, b) => a.price.compareTo(b.price));
+        break;
+      case 'Price: High to Low':
+        filtered.sort((a, b) => b.price.compareTo(a.price));
+        break;
+      case 'Stock: Low to High':
+        filtered.sort((a, b) => a.stock.compareTo(b.stock));
+        break;
+      case 'Stock: High to Low':
+        filtered.sort((a, b) => b.stock.compareTo(a.stock));
+        break;
+    }
+
+    return filtered;
   }
 
   int get _totalPages {
@@ -208,9 +245,10 @@ class _InventoryPageState extends State<InventoryPage> {
       overlay.size.height - (buttonPosition.dy + buttonSize.height + 8),
     );
 
-    final filterOptions = ['Active products', 'Inactive products', 'Out of stock'];
+    final filterOptions = ['Active products', 'Low Stock', 'Inactive products'];
 
     showMenu<String>(
+      color: Colors.white,
       context: context,
       position: position,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -245,6 +283,55 @@ class _InventoryPageState extends State<InventoryPage> {
     });
   }
 
+  void _showSortMenu() {
+    final sortOptions = [
+      'A-Z',
+      'Z-A',
+      'Price: Low to High',
+      'Price: High to Low',
+      'Stock: Low to High',
+      'Stock: High to Low',
+    ];
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        title: const Text('Sort Products'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: sortOptions.map((option) {
+            final isSelected = _sortOrder == option;
+            return ListTile(
+              title: Text(
+                option,
+                style: TextStyle(
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                  color: isSelected ? const Color(0xffFE691E) : Colors.black,
+                ),
+              ),
+              trailing: isSelected
+                  ? const Icon(Icons.check, color: Color(0xffFE691E))
+                  : null,
+              onTap: () {
+                setState(() {
+                  _sortOrder = option;
+                  _currentPage = 1;
+                });
+                Navigator.pop(context);
+              },
+            );
+          }).toList(),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
   // Pick image from gallery
   Future<Uint8List?> _pickImage() async {
     try {
@@ -670,6 +757,14 @@ class _InventoryPageState extends State<InventoryPage> {
 
   Future<void> _exportInventoryToExcel() async {
     try {
+      // Debug: Log what we're trying to export
+      print('🔍 Export Debug Info:');
+      print('   Total products: ${_allProducts.length}');
+      print('   Filtered products: ${_filteredProducts.length}');
+      print('   Active filter: $_activeFilter');
+      print('   Search query: "$_searchQuery"');
+      print('   Sort order: $_sortOrder');
+
       showDialog(
         context: context,
         barrierDismissible: false,
@@ -679,8 +774,15 @@ class _InventoryPageState extends State<InventoryPage> {
       );
 
       var excel = Excel.createExcel();
-      Sheet sheetObject = excel['Sheet1'];
-      excel.rename('Sheet1', 'Inventory');
+
+      // Delete default sheet
+      if (excel.sheets.containsKey('Sheet1')) {
+        excel.delete('Sheet1');
+      }
+
+      // Create new sheet
+      excel.copy('Sheet1', 'Inventory');
+      Sheet sheetObject = excel['Inventory'];
 
       var headers = ['Product Name', 'SKU', 'Stock', 'Price', 'Status', 'Total Value'];
       for (var i = 0; i < headers.length; i++) {
@@ -693,9 +795,23 @@ class _InventoryPageState extends State<InventoryPage> {
         );
       }
 
-      for (var i = 0; i < _allProducts.length; i++) {
-        final product = _allProducts[i];
+      // Use _filteredProducts to respect current view
+      final productsToExport = _filteredProducts;
+
+      print('📦 Products to export: ${productsToExport.length}');
+
+      if (productsToExport.isEmpty) {
+        if (mounted) Navigator.pop(context);
+        _showError('No products to export with current filter');
+        return;
+      }
+
+      // Add each product
+      for (var i = 0; i < productsToExport.length; i++) {
+        final product = productsToExport[i];
         final rowIndex = i + 1;
+
+        print('   Adding product ${i + 1}: ${product.name}');
 
         sheetObject.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: rowIndex))
             .value = TextCellValue(product.name);
@@ -717,26 +833,39 @@ class _InventoryPageState extends State<InventoryPage> {
             .value = DoubleCellValue(totalValue);
       }
 
+      // Set column widths
       for (var i = 0; i < headers.length; i++) {
         sheetObject.setColumnWidth(i, 20);
       }
 
+      // Encode to bytes
       var fileBytes = excel.encode();
+
+      print('📄 Excel encoded, bytes: ${fileBytes?.length ?? 0}');
+
       if (mounted) Navigator.pop(context);
 
-      if (fileBytes != null) {
-        final timestamp = DateTime.now().millisecondsSinceEpoch;
-        final fileName = 'inventory_export_$timestamp.xlsx';
-        await downloadFile(fileBytes, fileName);
-        if (mounted) {
-          _showSuccess('Inventory exported successfully: $fileName');
-        }
-      } else {
-        if (mounted) {
-          _showError('Failed to generate Excel file');
-        }
+      if (fileBytes == null || fileBytes.isEmpty) {
+        _showError('Failed to generate Excel file - encoding returned null/empty');
+        return;
       }
-    } catch (e) {
+
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final fileName = 'inventory_export_$timestamp.xlsx';
+      final bytes = Uint8List.fromList(fileBytes);
+
+      print('💾 Downloading file: $fileName (${bytes.length} bytes)');
+
+      await downloadFile(bytes, fileName);
+
+      if (mounted) {
+        _showSuccess('Exported ${productsToExport.length} products successfully: $fileName');
+      }
+
+      print('✅ Export completed successfully');
+    } catch (e, stackTrace) {
+      print('❌ Export error: $e');
+      print('Stack trace: $stackTrace');
       if (mounted) {
         Navigator.pop(context);
         _showError('Failed to export: $e');
@@ -1290,9 +1419,9 @@ class _InventoryPageState extends State<InventoryPage> {
       children: [
         Row(
           children: [
-            Expanded(child: _buildFilterButton("Active products")),
+            Expanded(child: _buildFilterButton("All Products")),
             const SizedBox(width: 8),
-            Expanded(child: _buildFilterButton("Out of stock")),
+            Expanded(child: _buildFilterButton("Out of Stock")),
           ],
         ),
         const SizedBox(height: 12),
@@ -1306,6 +1435,11 @@ class _InventoryPageState extends State<InventoryPage> {
               "Filter",
               key: _filterButtonKey,
               onPressed: _showFilterMenu,
+            ),
+            _buildActionButton(
+              Icons.sort,
+              "Sort",
+              onPressed: _showSortMenu,
             ),
             _buildActionButton(
               Icons.file_upload_outlined,
@@ -1334,9 +1468,9 @@ class _InventoryPageState extends State<InventoryPage> {
       children: [
         Row(
           children: [
-            _buildFilterButton("Active products"),
+            _buildFilterButton("All Products"),
             const SizedBox(width: 8),
-            _buildFilterButton("Out of stock"),
+            _buildFilterButton("Out of Stock"),
           ],
         ),
         Row(
@@ -1346,6 +1480,12 @@ class _InventoryPageState extends State<InventoryPage> {
               "Filter",
               key: _filterButtonKey,
               onPressed: _showFilterMenu,
+            ),
+            const SizedBox(width: 8),
+            _buildActionButton(
+              Icons.sort,
+              "Sort",
+              onPressed: _showSortMenu,
             ),
             const SizedBox(width: 8),
             _buildActionButton(

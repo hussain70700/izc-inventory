@@ -15,8 +15,8 @@ class SidebarWidget extends StatelessWidget {
   // Define which pages each role can access
   List<Map<String, dynamic>> _getMenuItemsForRole() {
     final allMenuItems = [
-      {'icon': Icons.home_outlined, 'label': 'Sales'},
       {'icon': Icons.dashboard, 'label': 'Dashboard'},
+      {'icon': Icons.home_outlined, 'label': 'Sales'},
       {'icon': Icons.analytics_outlined, 'label': 'Reports'},
       {'icon': Icons.location_on_outlined, 'label': 'Tracking'},
       {'icon': Icons.people_alt_outlined, 'label': 'Staff'},

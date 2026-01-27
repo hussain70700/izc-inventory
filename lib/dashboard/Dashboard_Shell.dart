@@ -5,6 +5,7 @@ import 'package:izc_inventory/dashboard/inventory_page.dart';
 import 'package:izc_inventory/dashboard/promo_code_page.dart';
 import 'package:izc_inventory/dashboard/reports_page.dart';
 import 'package:izc_inventory/dashboard/sales_page.dart';
+import 'package:izc_inventory/dashboard/tracking_page.dart';
 import 'package:izc_inventory/dashboard/user_page.dart';
 import 'package:izc_inventory/widgets/dashboard/sidebar_widget.dart';
 import 'package:izc_inventory/services/session_service.dart';
@@ -26,36 +27,24 @@ class _DashboardShellState extends State<DashboardShell> {
   String get _userRole => SessionService.getUserRole() ?? 'user';
   String? get _userImageUrl => SessionService.getImageUrl();
 
-  // List of all the pages that can be displayed in the main content area.
-  static const List<Widget> _mainPages = <Widget>[
-    SalesScreen(),
-    DashboardPage(),
-    InventoryPage(),
-    ReportsPage(),
-    UsersPage(),
-    PromoCodePage(),
-    CustomersScreen(),
-  ];
-
   // A map to link the sidebar string to the correct index.
   // This makes the code readable and easy to maintain.
   final Map<String, int> _pageIndexMap = {
-    "Sales": 0,
-    "Dashboard": 1,
+    "Dashboard": 0,
+    "Sales": 1,
     "Inventory": 2,
     "Reports": 3,
-    "Tracking": 0, // Placeholder
     "Staff": 4,
-    "Settings": 0,
     "Promo Codes": 5,
     "Customers": 6,
+    "Tracking": 7,
   };
 
   @override
   void initState() {
     super.initState();
     // Set initial page based on role - Sales is accessible to all roles
-    _selectedIndex = 0;
+    _selectedIndex = 1;
   }
 
   // This is used for the header title and sidebar selection.
@@ -103,6 +92,54 @@ class _DashboardShellState extends State<DashboardShell> {
     // Close drawer if open
     if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
       Navigator.of(context).pop();
+    }
+  }
+
+  // Navigate to Reports page - used by Dashboard
+  void _navigateToReports() {
+    // Check if user has access to Reports
+    if (!_hasAccessToPage('Reports')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('You do not have permission to access Reports'),
+          backgroundColor: Colors.red,
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _selectedIndex = 3; // Index of Reports page
+    });
+
+    // Close drawer if open
+    if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
+      Navigator.of(context).pop();
+    }
+  }
+
+  // Get the appropriate page widget based on selected index
+  Widget _getSelectedPage() {
+    switch (_selectedIndex) {
+      case 0:
+        return DashboardPage(onNavigateToReports: _navigateToReports);
+      case 1:
+        return const SalesScreen();
+      case 2:
+        return const InventoryPage();
+      case 3:
+        return const ReportsPage();
+      case 4:
+        return const UsersPage();
+      case 5:
+        return const PromoCodePage();
+      case 6:
+        return const CustomersScreen();
+      case 7:
+        return const TrackingPage();
+      default:
+        return DashboardPage(onNavigateToReports: _navigateToReports);
     }
   }
 
@@ -232,24 +269,7 @@ class _DashboardShellState extends State<DashboardShell> {
                 ],
               ),
             ),
-            const SizedBox(height: 16),
-            // Menu options
-            ListTile(
-              leading: const Icon(Icons.person, color: Color(0xFFE86B32)),
-              title: const Text('My Profile'),
-              onTap: () {
-                Navigator.pop(context);
-                // Navigate to profile page
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.settings, color: Color(0xFFE86B32)),
-              title: const Text('Settings'),
-              onTap: () {
-                Navigator.pop(context);
-                // Navigate to settings page
-              },
-            ),
+
             const Divider(),
             ListTile(
               leading: const Icon(Icons.logout, color: Colors.red),
@@ -335,7 +355,7 @@ class _DashboardShellState extends State<DashboardShell> {
                 _buildHeader(),
                 // The selected page will be displayed here.
                 Expanded(
-                  child: _mainPages.elementAt(_selectedIndex),
+                  child: _getSelectedPage(),
                 ),
               ],
             ),

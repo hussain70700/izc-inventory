@@ -1,10 +1,17 @@
 // Path: C:/Users/DELL/StudioProjects/izc_inventory/lib/dashboard/dashboard_page.dart
 import 'package:flutter/material.dart';
 import 'package:izc_inventory/utils/dashboard_service.dart';
-import 'package:izc_inventory/widgets/dashboard/dashboard_cards.dart'; // <<<<< UPDATED IMPORT
+import 'package:izc_inventory/widgets/dashboard/dashboard_cards.dart';
+import 'package:excel/excel.dart';
+import 'dart:typed_data';
+import '../utils/file_download.dart';
+import 'package:izc_inventory/services/supabase_service.dart';
+import 'package:intl/intl.dart';
 
 class DashboardPage extends StatefulWidget {
-  const DashboardPage({super.key});
+  final VoidCallback? onNavigateToReports;
+
+  const DashboardPage({super.key, this.onNavigateToReports});
 
   @override
   State<DashboardPage> createState() => _DashboardPageState();
@@ -12,30 +19,398 @@ class DashboardPage extends StatefulWidget {
 
 class _DashboardPageState extends State<DashboardPage> {
   final DashboardService _service = DashboardService();
+  final SupabaseService _supabaseService = SupabaseService();
   DashboardData? _currentData;
   bool _isLoading = true;
   final GlobalKey _periodButtonKey = GlobalKey();
   String _selectedPeriod = "Last 30 Days";
 
+  // Recent sales data
+  List<Map<String, dynamic>> _recentSales = [];
+
   @override
   void initState() {
     super.initState();
-    // Fetch data specifically for this page
     _fetchDashboardData();
   }
 
   Future<void> _fetchDashboardData() async {
     setState(() => _isLoading = true);
     try {
-      final data = await _service.fetchDataFor("Dashboard");
+      // Load real sales data first
+      await _loadRecentSales();
+
+      // If _currentData is still null after loading sales, use dummy data as fallback
+      if (_currentData == null) {
+        final data = await _service.fetchDataFor(_selectedPeriod);
+        setState(() {
+          _currentData = data;
+        });
+      }
+
       setState(() {
-        _currentData = data;
         _isLoading = false;
       });
     } catch (e) {
       setState(() => _isLoading = false);
       print(e);
     }
+  }
+
+  Future<void> _loadRecentSales() async {
+    try {
+      final DateTime now = DateTime.now();
+      DateTime startDate;
+
+      switch (_selectedPeriod) {
+        case 'Last 30 Days':
+          startDate = now.subtract(const Duration(days: 30));
+          break;
+        case 'Last 120 Days':
+          startDate = now.subtract(const Duration(days: 120));
+          break;
+        case 'Past Year':
+          startDate = now.subtract(const Duration(days: 365));
+          break;
+        default:
+          startDate = now.subtract(const Duration(days: 30));
+      }
+
+      // Fetch all sales within the date range
+      final sales = await _supabaseService.getSalesHistoryByDateRange(
+        startDate: startDate,
+        endDate: now,
+        limit: 1000, // Get all sales for calculation
+      );
+
+      // Calculate status counts and amounts
+      int completedCount = 0;
+      int returnedCount = 0;
+      int totalBookedCount = 0;
+      int shipperAdviceCount = 0;
+      int inProcessCount = 0;
+      int handedOverCount = 0;
+
+      double totalSalesAmount = 0.0;
+      double onlineSalesAmount = 0.0;
+      double instoreSalesAmount = 0.0;
+
+      double paymentProcessed = 0.0;
+      double paymentTransferred = 0.0;
+      double cashPayment = 0.0;
+
+      // ✅ NEW: Track COD amounts
+      double codAmountBooked = 0.0;
+      int codOrdersCount = 0;
+
+      for (var sale in sales) {
+        final status = sale['status'] ?? 'Completed';
+        final amount = (sale['total'] as num).toDouble();
+        final paymentMethod = sale['payment_method'] ?? '';
+        final advancePayment = (sale['advance_payment'] as num?)?.toDouble() ?? 0.0;
+
+        switch (status) {
+          case 'Completed':
+          case 'Delivered':
+            completedCount++;
+            totalSalesAmount += amount;
+            paymentProcessed += amount;
+
+            // ✅ NEW: Calculate based on actual payment method
+            if (paymentMethod == 'Cash') {
+              cashPayment += amount;           // Only Cash goes here
+              instoreSalesAmount += amount;     // Cash is in-store
+            } else {
+              // All other methods (Card, QR Pay, COD) are online
+              paymentTransferred += amount;     // Card, QR, COD go here
+              onlineSalesAmount += amount;      // Online payments
+            }
+            // ❌ COD NOT counted here - order is delivered
+            break;
+
+          case 'Returned':
+            returnedCount++;
+            // ❌ COD NOT counted here - order is returned
+            break;
+
+          case 'Total Booked':
+          case 'Booked':
+            totalBookedCount++;
+            // ✅ Count COD for pending orders (not delivered yet)
+            if (paymentMethod == 'COD') {
+              codOrdersCount++;
+              final remainingCOD = amount - advancePayment;
+              codAmountBooked += remainingCOD > 0 ? remainingCOD : 0;
+            }
+            break;
+
+          case 'Shipper Advice':
+            shipperAdviceCount++;
+            // ✅ Count COD for pending orders (not delivered yet)
+            if (paymentMethod == 'COD') {
+              codOrdersCount++;
+              final remainingCOD = amount - advancePayment;
+              codAmountBooked += remainingCOD > 0 ? remainingCOD : 0;
+            }
+            break;
+
+          case 'In Process':
+            inProcessCount++;
+            // ✅ Count COD for pending orders (not delivered yet)
+            if (paymentMethod == 'COD') {
+              codOrdersCount++;
+              final remainingCOD = amount - advancePayment;
+              codAmountBooked += remainingCOD > 0 ? remainingCOD : 0;
+            }
+            break;
+
+          case 'Handed Over':
+            handedOverCount++;
+            totalSalesAmount += amount;
+            paymentProcessed += amount;
+
+            // ✅ NEW: Calculate based on actual payment method
+            if (paymentMethod == 'Cash') {
+              cashPayment += amount;           // Only Cash goes here
+              instoreSalesAmount += amount;     // Cash is in-store
+            } else {
+              // All other methods (Card, QR Pay, COD) are online
+              paymentTransferred += amount;     // Card, QR, COD go here
+              onlineSalesAmount += amount;      // Online payments
+            }
+
+            // ✅ Count COD even for Handed Over (not delivered to customer yet)
+            if (paymentMethod == 'COD') {
+              codOrdersCount++;
+              final remainingCOD = amount - advancePayment;
+              codAmountBooked += remainingCOD > 0 ? remainingCOD : 0;
+            }
+            break;
+
+          default:
+          // ✅ For any other status, if COD, count it as pending
+            if (paymentMethod == 'COD') {
+              codOrdersCount++;
+              final remainingCOD = amount - advancePayment;
+              codAmountBooked += remainingCOD > 0 ? remainingCOD : 0;
+            }
+            break;
+        }
+      }
+
+      // Calculate return ratio based on ORDER COUNT
+      final totalOrders = sales.length;
+      final returnRatio = totalOrders > 0 ? returnedCount / totalOrders : 0.0;
+
+      // Calculate delivered percentage (completed + handed over)
+      final deliveredCount = completedCount + handedOverCount;
+      final deliveredPercentage = totalOrders > 0 ? deliveredCount / totalOrders : 0.0;
+
+      // ✅ Calculate COD percentage
+      final codPercentage = totalSalesAmount > 0 ? codAmountBooked / totalSalesAmount : 0.0;
+
+      setState(() {
+        _recentSales = sales.take(4).toList(); // Keep only 4 for display
+
+        // Create or update the dashboard data with actual values from database
+        _currentData = DashboardData(
+          totalSales: 'Rs ${totalSalesAmount.toStringAsFixed(2)}',
+          onlineSales: 'Rs ${onlineSalesAmount.toStringAsFixed(2)}',
+          offlineSales: 'Rs ${instoreSalesAmount.toStringAsFixed(2)}',
+          paymentProcessed: 'Rs ${paymentProcessed.toStringAsFixed(2)}',
+          paymentTransferred: 'Rs ${paymentTransferred.toStringAsFixed(2)}',
+          toBeTransferred: 'Rs ${cashPayment.toStringAsFixed(2)}',
+          deliveredPercentage: deliveredPercentage,
+          returnRatio: returnRatio,
+          totalBooked: totalBookedCount.toString(),
+          shipperAdvice: shipperAdviceCount.toString(),
+          returned: returnedCount.toString(),
+          inProcess: inProcessCount.toString(),
+          handedOver: handedOverCount.toString(),
+          delivered: completedCount.toString(),
+          codAmountBooked: codAmountBooked, // ✅ Add COD amount
+          codOrdersCount: codOrdersCount, // ✅ Add COD orders count
+          codPercentage: codPercentage, // ✅ Add COD percentage
+        );
+      });
+    } catch (e) {
+      print('Failed to load recent sales: $e');
+    }
+  }
+
+  // NEW: Export Dashboard Report to Excel
+  Future<void> _exportDashboardReport() async {
+    if (_currentData == null) return;
+
+    try {
+      // Show loading indicator
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(color: Color(0xffFE691E)),
+        ),
+      );
+
+      // Create Excel
+      var excel = Excel.createExcel();
+
+      // Delete default sheet and create new one
+      if (excel.sheets.containsKey('Sheet1')) {
+        excel.delete('Sheet1');
+      }
+      excel.copy('Sheet1', 'Dashboard Report');
+      Sheet sheetObject = excel['Dashboard Report'];
+
+      // Title Row
+      var titleCell = sheetObject.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 0));
+      titleCell.value = TextCellValue('Dashboard Report - $_selectedPeriod');
+      titleCell.cellStyle = CellStyle(
+        bold: true,
+        fontSize: 16,
+        backgroundColorHex: ExcelColor.fromHexString('#FE691E'),
+        fontColorHex: ExcelColor.fromHexString('#FFFFFF'),
+      );
+
+      // Merge title across columns
+      sheetObject.merge(
+        CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 0),
+        CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: 0),
+      );
+
+      // Sales Overview Section
+      int currentRow = 2;
+      var salesHeaderCell = sheetObject.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: currentRow));
+      salesHeaderCell.value = TextCellValue('SALES OVERVIEW');
+      salesHeaderCell.cellStyle = CellStyle(bold: true, fontSize: 14);
+
+      currentRow++;
+      _addDataRow(sheetObject, currentRow++, 'Total Sales', _currentData!.totalSales);
+      _addDataRow(sheetObject, currentRow++, 'Online Sales', _currentData!.onlineSales);
+      _addDataRow(sheetObject, currentRow++, 'In-Store Sales', _currentData!.offlineSales);
+
+      // Financial Overview Section
+      currentRow++;
+      var financialHeaderCell = sheetObject.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: currentRow));
+      financialHeaderCell.value = TextCellValue('FINANCIAL OVERVIEW');
+      financialHeaderCell.cellStyle = CellStyle(bold: true, fontSize: 14);
+
+      currentRow++;
+      _addDataRow(sheetObject, currentRow++, 'Payment Processed', _currentData!.paymentProcessed);
+      _addDataRow(sheetObject, currentRow++, 'Online Payment', _currentData!.paymentTransferred);
+      _addDataRow(sheetObject, currentRow++, 'Cash Payment', _currentData!.toBeTransferred);
+
+      // Performance Section
+      currentRow++;
+      var performanceHeaderCell = sheetObject.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: currentRow));
+      performanceHeaderCell.value = TextCellValue('PERFORMANCE METRICS');
+      performanceHeaderCell.cellStyle = CellStyle(bold: true, fontSize: 14);
+
+      currentRow++;
+      _addDataRow(sheetObject, currentRow++, 'Delivered Percentage', '${(_currentData!.deliveredPercentage * 100).toStringAsFixed(1)}%');
+      _addDataRow(sheetObject, currentRow++, 'Return Ratio', '${(_currentData!.returnRatio * 100).toStringAsFixed(1)}%');
+
+      // Recent Transactions Section
+      currentRow++;
+      var transactionsHeaderCell = sheetObject.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: currentRow));
+      transactionsHeaderCell.value = TextCellValue('RECENT TRANSACTIONS');
+      transactionsHeaderCell.cellStyle = CellStyle(bold: true, fontSize: 14);
+
+      currentRow++;
+      // Transaction headers
+      final transactionHeaders = ['DATE', 'CUSTOMER', 'PAYMENT METHOD', 'AMOUNT', 'STATUS'];
+      for (var i = 0; i < transactionHeaders.length; i++) {
+        var cell = sheetObject.cell(CellIndex.indexByColumnRow(columnIndex: i, rowIndex: currentRow));
+        cell.value = TextCellValue(transactionHeaders[i]);
+        cell.cellStyle = CellStyle(
+          bold: true,
+          backgroundColorHex: ExcelColor.fromHexString('#E0E0E0'),
+        );
+      }
+
+      currentRow++;
+      // Add recent sales from database
+      for (var sale in _recentSales) {
+        final customer = sale['customers'];
+        final date = DateTime.parse(sale['sale_date']);
+
+        sheetObject.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: currentRow)).value =
+            TextCellValue(DateFormat('MM/dd/yyyy').format(date));
+        sheetObject.cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: currentRow)).value =
+            TextCellValue(customer['name'] ?? 'N/A');
+        sheetObject.cell(CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: currentRow)).value =
+            TextCellValue(sale['payment_method'] ?? 'N/A');
+        sheetObject.cell(CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: currentRow)).value =
+            TextCellValue('Rs ${sale['total'].toStringAsFixed(2)}');
+        sheetObject.cell(CellIndex.indexByColumnRow(columnIndex: 4, rowIndex: currentRow)).value =
+            TextCellValue(sale['status'] ?? 'Completed');
+        currentRow++;
+      }
+
+      // Auto-fit columns
+      for (var i = 0; i < 6; i++) {
+        sheetObject.setColumnWidth(i, 20);
+      }
+
+      // Encode
+      List<int>? excelBytes = excel.encode();
+
+      if (mounted) Navigator.pop(context);
+
+      if (excelBytes == null || excelBytes.isEmpty) {
+        if (mounted) {
+          _showError('Failed to generate Excel file');
+        }
+        return;
+      }
+
+      final bytes = Uint8List.fromList(excelBytes);
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final fileName = 'dashboard_report_$timestamp.xlsx';
+
+      await downloadFile(bytes, fileName);
+
+      if (mounted) {
+        _showSuccess('Dashboard report exported: $fileName');
+      }
+    } catch (e, stackTrace) {
+      print('Export error: $e');
+      print('Stack trace: $stackTrace');
+      if (mounted) {
+        Navigator.pop(context);
+        _showError('Export failed: $e');
+      }
+    }
+  }
+
+  // Helper to add data rows
+  void _addDataRow(Sheet sheet, int rowIndex, String label, dynamic value) {
+    var labelCell = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: rowIndex));
+    labelCell.value = TextCellValue(label);
+    labelCell.cellStyle = CellStyle(bold: true);
+
+    var valueCell = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: rowIndex));
+    valueCell.value = TextCellValue(value.toString());
+  }
+
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  void _showSuccess(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.green,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   @override
@@ -47,7 +422,6 @@ class _DashboardPageState extends State<DashboardPage> {
       return const Center(child: Text("Failed to load dashboard data."));
     }
 
-    // Use a LayoutBuilder at the top level to pass constraints down.
     return LayoutBuilder(builder: (context, constraints) {
       return SingleChildScrollView(
         child: _buildScrollableMainContent(constraints),
@@ -55,46 +429,38 @@ class _DashboardPageState extends State<DashboardPage> {
     });
   }
 
-  /// Builds the scrollable main content area of the dashboard.
-  /// It now accepts BoxConstraints to make decisions based on width.
   Widget _buildScrollableMainContent(BoxConstraints constraints) {
-    // Determine if the screen is narrow.
     final bool isNarrow = constraints.maxWidth < 700;
-    // Define dynamic padding based on screen width.
     final double horizontalPadding = isNarrow ? 16.0 : 24.0;
 
-    return Column( // Changed from Padding to Column to manage padding and the header separately
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container( // <--- NEW WRAPPER CONTAINER FOR THE HEADER
-          // Take full available width
-          padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 24.0), // Apply padding here
+        Container(
+          padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 24.0),
           decoration: BoxDecoration(
-            color: Colors.white, // Ensure a white background for the header
+            color: Colors.white,
             boxShadow: [
               BoxShadow(
-                color: Colors.grey.withOpacity(0.2), // Adjust opacity as desired
-                spreadRadius: 0, // No spread, keeps shadow tight to the bottom
-                blurRadius: 6,   // Softness of the shadow
-                offset: Offset(0, 4), // Shifts shadow 4 pixels down
+                color: Colors.grey.withOpacity(0.2),
+                spreadRadius: 0,
+                blurRadius: 6,
+                offset: Offset(0, 4),
               )
             ],
           ),
-          child: _buildResponsiveHeader(isNarrow), // The actual responsive header content
+          child: _buildResponsiveHeader(isNarrow),
         ),
-        SizedBox(height: 24.0), // Keep spacing between header and body content
-        // The main content area that switches between Row and Column.
+        SizedBox(height: 24.0),
         Padding(
-          padding: EdgeInsets.symmetric(horizontal: horizontalPadding), // Apply horizontal padding to body
+          padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
           child: _buildResponsiveBody(isNarrow),
         ),
       ],
     );
   }
 
-  /// Builds the top header row with "Dashboard Overview" and action buttons.
   Widget _buildResponsiveHeader(bool isNarrow) {
-    // Use a Column for the header on narrow screens, a Row on wider screens.
     return isNarrow
         ? Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -115,9 +481,7 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  /// Builds the main content body (Sales, Financial, Performance).
   Widget _buildResponsiveBody(bool isNarrow) {
-    // This is similar to your original LayoutBuilder logic.
     if (isNarrow) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -146,14 +510,13 @@ class _DashboardPageState extends State<DashboardPage> {
                   _buildFinancialSection(isNarrow),
                 ],
               )),
-          const SizedBox(width: 24), // Add spacing between the two columns
+          const SizedBox(width: 24),
           Expanded(flex: 1, child: _buildPerformanceSection(isNarrow)),
         ],
       );
     }
   }
 
-  /// Builds the "Dashboard Overview" title and subtitle with dynamic font size.
   Widget _buildOverviewText(bool isNarrow) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -162,7 +525,7 @@ class _DashboardPageState extends State<DashboardPage> {
           "Dashboard Overview",
           style: TextStyle(fontSize: isNarrow ? 20 : 24, fontWeight: FontWeight.bold),
         ),
-        if (!isNarrow) // Only show subtitle on wider screens to save space
+        if (!isNarrow)
           const Padding(
             padding: EdgeInsets.only(top: 4.0),
             child: Text(
@@ -174,7 +537,6 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  /// Builds the period selection and export buttons.
   Widget _buildActionButtons() {
     return Wrap(
       spacing: 12.0,
@@ -214,6 +576,7 @@ class _DashboardPageState extends State<DashboardPage> {
     );
 
     showMenu<String>(
+      color: Colors.white,
       context: context,
       position: position,
       items: const [
@@ -224,13 +587,14 @@ class _DashboardPageState extends State<DashboardPage> {
     ).then((value) {
       if (value != null && value != _selectedPeriod) {
         setState(() => _selectedPeriod = value);
+        _fetchDashboardData(); // Refresh data when period changes
       }
     });
   }
 
   Widget _buildExportButton() {
     return ElevatedButton.icon(
-      onPressed: () => print("Exporting report for $_selectedPeriod"),
+      onPressed: _exportDashboardReport,
       icon: const Icon(Icons.download, color: Color(0xffFE691E), size: 18),
       label: const Text("Export Report", style: TextStyle(color: Color(0xffFE691E), fontSize: 13)),
       style: ElevatedButton.styleFrom(
@@ -251,9 +615,7 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  /// MODIFIED: This now uses a Row with Flexible children to make cards shrink.
   Widget _buildResponsiveSalesCards(bool isNarrow) {
-    // Using a Row with Flexible widgets ensures the cards stay on one line and shrink.
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -264,7 +626,7 @@ class _DashboardPageState extends State<DashboardPage> {
               color: Colors.blue,
               status: "All Channels"),
         ),
-        const SizedBox(width: 12), // Spacing between cards
+        const SizedBox(width: 12),
         Flexible(
           child: FinancialCard(
               title: "Online Sales",
@@ -272,7 +634,7 @@ class _DashboardPageState extends State<DashboardPage> {
               color: Colors.purple,
               status: "Website"),
         ),
-        const SizedBox(width: 12), // Spacing between cards
+        const SizedBox(width: 12),
         Flexible(
           child: FinancialCard(
               title: "In-Store",
@@ -284,7 +646,6 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  /// MODIFIED: This also uses a Row with Flexible children.
   Widget _buildFinancialSection(bool isNarrow) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -293,7 +654,6 @@ class _DashboardPageState extends State<DashboardPage> {
             icon: Icons.account_balance_wallet_outlined,
             title: "Financial Overview"),
         const SizedBox(height: 16),
-        // Applying the same Row + Flexible pattern here.
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -334,36 +694,74 @@ class _DashboardPageState extends State<DashboardPage> {
       children: [
         _buildSectionHeader(icon: Icons.bar_chart, title: "Performance"),
         const SizedBox(height: 16),
-        PerformanceCard(title: "Delivered Percentage", value: "${(_currentData!.deliveredPercentage * 100).toStringAsFixed(1)}%", subtitle: "Top 5% in your region", progress: _currentData!.deliveredPercentage, color: Colors.green),
+        PerformanceCard(
+            title: "Delivered Percentage",
+            value: "${(_currentData!.deliveredPercentage * 100).toStringAsFixed(1)}%",
+            subtitle: "${_currentData!.delivered} orders delivered",
+            progress: _currentData!.deliveredPercentage,
+            color: Colors.green
+        ),
         const SizedBox(height: 12),
-        PerformanceCard(title: "Return Ratio", value: "${(_currentData!.returnRatio * 100).toStringAsFixed(1)}%", subtitle: "Within acceptable limits", progress: _currentData!.returnRatio, color: Colors.red),
+        PerformanceCard(
+            title: "Return Ratio",
+            value: "${(_currentData!.returnRatio * 100).toStringAsFixed(1)}%",
+            subtitle: "${_currentData!.returned} items returned",
+            progress: _currentData!.returnRatio,
+            color: Colors.red
+        ),
         const SizedBox(height: 12),
-        const PerformanceCard(title: "COD Amount Booked", value: "\$12.4k", subtitle: "65% of total bookings", progress: 0.65, color: Colors.deepOrange),
+        PerformanceCard(
+            title: "COD Amount Booked",
+            value: "Rs ${_currentData!.codAmountBooked.toStringAsFixed(1)}", // ✅ Format as needed
+            subtitle: "${_currentData!.codOrdersCount} pending COD orders",
+            progress: _currentData!.codPercentage,
+            color: Colors.deepOrange
+        ),
       ],
     );
   }
 
-  /// Makes the DataTable horizontally scrollable on narrow screens.
   Widget _buildRecentTransactionsTable() {
-    final List<Map<String, String>> transactions = [
-      {'billNo': 'BN001', 'type': 'online', 'id': '#12345', 'name': 'John Doe', 'date': '10/10/2023', 'amount': '\$500', 'status': 'Completed'},
-      {'billNo': 'BN002', 'type': 'online', 'id': '#12346', 'name': 'Jane Smith', 'date': '10/09/2023', 'amount': '\$258', 'status': 'Completed'},
-      {'billNo': 'BN003', 'type': 'cash', 'id': '', 'name': 'Bob Johnson', 'date': '10/08/2023', 'amount': '\$1200', 'status': 'Processing'},
-      {'billNo': 'BN004', 'type': 'online', 'id': '#12348', 'name': 'Alice Brown', 'date': '10/07/2023', 'amount': '\$150', 'status': 'Refund'},
-    ];
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
+    if (_recentSales.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(12),
           boxShadow: [
-      BoxShadow(
-      color: Colors.grey.withOpacity(0.4),
-      spreadRadius: 4,
-      blurRadius: 8,
-      offset: const Offset(0, 5),
-    ),
-    ],
+            BoxShadow(
+              color: Colors.grey.withOpacity(0.4),
+              spreadRadius: 4,
+              blurRadius: 8,
+              offset: const Offset(0, 5),
+            ),
+          ],
+        ),
+        child: const Center(
+          child: Padding(
+            padding: EdgeInsets.all(20.0),
+            child: Text(
+              'No recent transactions',
+              style: TextStyle(color: Colors.grey),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.4),
+            spreadRadius: 4,
+            blurRadius: 8,
+            offset: const Offset(0, 5),
+          ),
+        ],
       ),
       child: Column(
         children: [
@@ -371,66 +769,87 @@ class _DashboardPageState extends State<DashboardPage> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text("Recent Transactions", style: TextStyle(fontWeight: FontWeight.bold)),
-              TextButton(onPressed: () {}, child: const Text("View All", style: TextStyle(color: Color(0xffFE691E)))),
+              TextButton(
+                onPressed: widget.onNavigateToReports,
+                child: const Text("View All", style: TextStyle(color: Color(0xffFE691E))),
+              ),
             ],
           ),
           const Divider(),
-          // Wrap the DataTable in a scrollable widget
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: DataTable(
-              headingTextStyle: const TextStyle(color: Colors.grey, fontWeight: FontWeight.bold, fontSize: 11),
-              // Increase column spacing a bit for readability
-              columnSpacing: 38,
-              columns: const [
-                DataColumn(label: Text("BILL NO")),
-                DataColumn(label: Text("TRANSACTION ID")),
-                DataColumn(label: Text("NAME")),
-                DataColumn(label: Text("DATE")),
-                DataColumn(label: Text("AMOUNT")),
-                DataColumn(label: Text("STATUS")),
-              ],
-              rows: transactions.map((transaction) {
-                return DataRow(cells: [
-                  DataCell(Text(transaction['billNo']!, style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold))),
-                  DataCell(Text(transaction['type'] == 'online' ? transaction['id']! : 'Cash Payment', style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold))),
-                  DataCell(Text(transaction['name']!)),
-                  DataCell(Text(transaction['date']!)),
-                  DataCell(Text(transaction['amount']!, style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold))),
-                  DataCell(_buildStatusPill(transaction['status']!)),
-                ]);
-              }).toList(),
-            ),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              return SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minWidth: constraints.maxWidth,
+                  ),
+                  child: DataTable(
+                    headingTextStyle: const TextStyle(
+                      color: Colors.grey,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 11,
+                    ),
+                    columnSpacing: 38,
+                    dataRowMinHeight: 48,
+                    dataRowMaxHeight: 64,
+                    columns: const [
+                      DataColumn(label: Text("DATE")),
+                      DataColumn(label: Text("CUSTOMER")),
+                      DataColumn(label: Text("PAYMENT METHOD")),
+                      DataColumn(label: Text("AMOUNT")),
+                    ],
+                    rows: _recentSales.map((sale) {
+                      final customer = sale['customers'];
+                      final date = DateTime.parse(sale['sale_date']);
+
+
+                      return DataRow(cells: [
+                        DataCell(
+                          Text(
+                            DateFormat('MM/dd/yyyy').format(date),
+                            style: const TextStyle(
+                              color: Colors.black,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                        DataCell(
+                          Text(
+                            customer['name'] ?? 'N/A',
+                            style: const TextStyle(fontWeight: FontWeight.w500),
+                          ),
+                        ),
+                        DataCell(
+                          Text(
+                            sale['payment_method'] ?? 'N/A',
+                            style: const TextStyle(
+                              color: Colors.black,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        DataCell(
+                          Text(
+                            'Rs ${sale['total'].toStringAsFixed(2)}',
+                            style: const TextStyle(
+                              color: Colors.black,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+
+                      ]);
+                    }).toList(),
+                  ),
+                ),
+              );
+            },
           ),
         ],
       ),
     );
   }
 
-  Widget _buildStatusPill(String status) {
-    Color backgroundColor;
-    Color textColor;
-    switch (status) {
-      case 'Completed':
-        backgroundColor = Colors.green.shade100;
-        textColor = Colors.green.shade800;
-        break;
-      case 'Processing':
-        backgroundColor = Colors.blue.shade100;
-        textColor = Colors.blue.shade800;
-        break;
-      case 'Refund':
-        backgroundColor = Colors.red.shade100;
-        textColor = Colors.red.shade800;
-        break;
-      default:
-        backgroundColor = Colors.grey.shade200;
-        textColor = Colors.grey.shade800;
-    }
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(color: backgroundColor, borderRadius: BorderRadius.circular(12)),
-      child: Text(status, style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 12)),
-    );
-  }
+
 }

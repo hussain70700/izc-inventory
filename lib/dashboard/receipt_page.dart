@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:izc_inventory/services/session_service.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
@@ -10,7 +12,7 @@ import 'package:path_provider/path_provider.dart';
 import '../models/detail_sale_item.dart';
 import '../models/sales_model.dart';
 import '../services/supabase_service.dart';
-
+import 'dart:typed_data';
 class ReceiptScreen extends StatefulWidget {
   final String saleId;
 
@@ -29,7 +31,7 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
   List<DetailedSaleItem> _items = [];
   bool _isLoading = true;
   String? _error;
-
+  String _cashierName = 'Admin User';
   @override
   void initState() {
     super.initState();
@@ -40,17 +42,18 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
     try {
       print('📱 Starting to load receipt data for sale ID: ${widget.saleId}');
 
-      // Try to get sale first
+      // ✅ GET CURRENT USER
+      final userEmail = SessionService.getEmail() ?? 'Unknown';
+      final userName = SessionService.getFullName() ?? userEmail.split('@').first;
+
       print('📱 Fetching sale...');
       final sale = await _supabaseService.getSaleById(widget.saleId);
       print('✅ Sale fetched successfully: ${sale?.id}');
 
-      // Then try to get items
       print('📱 Fetching sale items...');
       final items = await _supabaseService.getDetailedSaleItems(widget.saleId);
       print('✅ Items fetched successfully: ${items.length} items');
 
-      // Print first item details for debugging
       if (items.isNotEmpty) {
         final firstItem = items.first;
         print('📦 First item details:');
@@ -62,6 +65,7 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
       setState(() {
         _sale = sale;
         _items = items;
+        _cashierName = userName; // ✅ SET CASHIER NAME
         _isLoading = false;
       });
     } catch (e, stackTrace) {
@@ -78,8 +82,16 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
 
   Future<pw.Document> _generatePdf() async {
     final pdf = pw.Document();
-    final dateFormat = DateFormat('yyyy-MM-dd HH:mm:ss');
+    final dateFormat = DateFormat('dd MMM yyyy hh:mm a');
     final customerName = _items.isNotEmpty ? (_items.first.customerName ?? 'Guest') : 'N/A';
+    final ByteData bytes = await rootBundle.load('images/Logo.png');
+    final Uint8List logoBytes = bytes.buffer.asUint8List();
+    final pw.MemoryImage logoImage = pw.MemoryImage(logoBytes);
+
+    // Calculate remaining payment
+    final advancePayment = _sale?.advancePayment ?? 0.0;
+    final totalAmount = _sale?.total ?? 0.0;
+    final remainingPayment = totalAmount - advancePayment;
 
     pdf.addPage(
       pw.Page(
@@ -92,23 +104,15 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
               pw.Container(
                 width: double.infinity,
                 padding: const pw.EdgeInsets.all(16),
-                color: PdfColors.black,
                 child: pw.Column(
                   children: [
-                    pw.Text(
-                      'RETAIL POS',
-                      style: pw.TextStyle(
-                        color: PdfColors.white,
-                        fontWeight: pw.FontWeight.bold,
-                        fontSize: 18,
-                      ),
-                    ),
+                    pw.Image(logoImage, width: 100, height: 100),
                     pw.SizedBox(height: 8),
                     pw.Text(
-                      '123 Main Street, City, State 12345\nTel: (555) 123-4567\nEmail: info@retailpos.com',
+                      'Faisalabad, Pakistan\nTel: +92 315747 8727\nEmail: info@izzahs.com',
                       textAlign: pw.TextAlign.center,
                       style: const pw.TextStyle(
-                        color: PdfColors.white,
+                        color: PdfColors.black,
                         fontSize: 10,
                       ),
                     ),
@@ -122,9 +126,9 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
                 padding: const pw.EdgeInsets.symmetric(horizontal: 16),
                 child: pw.Column(
                   children: [
-                    _pdfRow('INVOICE NO:', '#${_sale!.id?.substring(0, 8).toUpperCase() ?? 'N/A'}'),
-                    _pdfRow('DATE:', dateFormat.format(_sale!.saleDate)),
-                    _pdfRow('CASHIER:', 'Admin User'),
+                    _pdfRow('INVOICE NO:', '#${_sale!.id?.substring(0, 14).toUpperCase() ?? 'N/A'}'),
+                    _pdfRow('DATE:', dateFormat.format(_sale!.saleDate)), // ✅ Updated format
+                    _pdfRow('CASHIER:', _cashierName),
                     _pdfRow('CUSTOMER:', customerName),
                   ],
                 ),
@@ -196,15 +200,29 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
                       _pdfRow('DISCOUNT:', '-\$${_sale!.discount.toStringAsFixed(2)}'),
                     _pdfRow('TAX (8.5%):', '\$${_sale!.tax.toStringAsFixed(2)}'),
                     pw.SizedBox(height: 8),
-                    pw.Divider(thickness: 2),
+                    pw.Divider(thickness: 1),
                     pw.SizedBox(height: 8),
                     _pdfRow(
                       'TOTAL PAYABLE:',
-                      '\$${_sale!.total.toStringAsFixed(2)}',
+                      '\$${totalAmount.toStringAsFixed(2)}',
                       bold: true,
                     ),
-                    pw.SizedBox(height: 8),
+
+                    // ✅ ADVANCE PAYMENT SECTION (exactly matching sales page format)
+                    if (advancePayment > 0) ...[
+                      pw.SizedBox(height: 8),
+                      _pdfRow('ADVANCE PAYMENT:', '-\$${advancePayment.toStringAsFixed(2)}'),
+                      pw.Divider(thickness: 1),
+                      _pdfRow(
+                        'COD AMOUNT:',
+                        '\$${remainingPayment.toStringAsFixed(2)}',
+                        bold: true,
+                      ),
+                    ],
+
+                    pw.SizedBox(height: 12),
                     _pdfRow('PAYMENT METHOD:', _sale!.paymentMethod.toUpperCase()),
+
                     if (_sale!.notes != null && _sale!.notes!.isNotEmpty) ...[
                       pw.SizedBox(height: 8),
                       pw.Container(
@@ -245,17 +263,33 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
                 child: pw.Column(
                   children: [
                     pw.Text(
-                      'THANK YOU FOR YOUR PURCHASE!',
+                      'THANK YOU FOR SHOPPING!',
+                      textAlign: pw.TextAlign.center,
                       style: pw.TextStyle(
                         fontWeight: pw.FontWeight.bold,
                         fontSize: 12,
                       ),
                     ),
                     pw.SizedBox(height: 8),
-                    pw.Text(
-                      'Visit us again soon\nFollow us @retailpos\n\nNo refunds without receipt\nExchange within 30 days\n\nPowered by RetailPOS v1.0',
+                    pw.RichText(
                       textAlign: pw.TextAlign.center,
-                      style: const pw.TextStyle(fontSize: 9),
+                      text: pw.TextSpan(
+                        style: const pw.TextStyle(fontSize: 9, color: PdfColors.black),
+                        children: [
+                          const pw.TextSpan(text: 'For online shopping\nWebsite: ',),
+                          pw.TextSpan(
+                            text: 'www.izzahs.com',
+                            style: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.black),
+                          ),
+                          const pw.TextSpan(text: '\nInstagram: '),
+                          pw.TextSpan(
+                            text: 'izzah.s_collection',
+                            style: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.black),
+                          ),
+                          const pw.TextSpan(
+                              text: '\n\nNo refunds without receipt\nExchange within 15 days\n\nPowered by IZZAHS COLLECTION'),
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -313,32 +347,7 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
     }
   }
 
-  Future<void> _shareReceipt() async {
-    try {
-      final pdf = await _generatePdf();
-      final bytes = await pdf.save();
 
-      final directory = await getTemporaryDirectory();
-      final file = File('${directory.path}/receipt_${_sale!.id?.substring(0, 8) ?? 'unknown'}.pdf');
-      await file.writeAsBytes(bytes);
-
-      await Share.shareXFiles(
-        [XFile(file.path)],
-        subject: 'Receipt #${_sale!.id?.substring(0, 8).toUpperCase() ?? 'N/A'}',
-        text: 'Receipt from RETAIL POS - Total: \$${_sale!.total.toStringAsFixed(2)}',
-      );
-    } catch (e) {
-      if (mounted) {
-        print('❌ Share error: $e');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error sharing receipt: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -353,11 +362,6 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
             icon: const Icon(Icons.print),
             onPressed: _isLoading ? null : _printReceipt,
             tooltip: 'Print Receipt',
-          ),
-          IconButton(
-            icon: const Icon(Icons.share),
-            onPressed: _isLoading ? null : _shareReceipt,
-            tooltip: 'Share Receipt',
           ),
         ],
       ),
@@ -426,31 +430,17 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
-      color: Colors.black,
-      child: const Column(
+      child: Column(
         children: [
-          CircleAvatar(
-            radius: 22,
-            backgroundColor: Colors.white,
-            child: Icon(Icons.store, color: Colors.black, size: 28),
-          ),
-          SizedBox(height: 10),
-          Text(
-            'RETAIL POS',
-            style: TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 2,
-              fontSize: 18,
-            ),
-          ),
-          SizedBox(height: 6),
-          Text(
-            '123 Main Street, City, State 12345\n'
-                'Tel: (555) 123-4567\n'
-                'Email: info@retailpos.com',
+          const SizedBox(height: 10),
+          Image.asset('images/Logo.png', width: 100, height: 100,),
+          const SizedBox(height: 6),
+          const Text(
+            'Faisalabad, Pakistan\n'
+                'Tel: +92 315 747 8727\n'
+                'Email: info@izzahs.com',
             textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.white70, fontSize: 11),
+            style: TextStyle(color: Colors.black, fontSize: 11),
           ),
         ],
       ),
@@ -460,15 +450,16 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
   Widget _infoSection() {
     if (_sale == null || _items.isEmpty) return const SizedBox.shrink();
 
-    final dateFormat = DateFormat('yyyy-MM-dd HH:mm:ss');
+    // ✅ NEW FORMAT: 25 Jan 2025 07:54 PM
+    final dateFormat = DateFormat('dd MMM yyyy hh:mm a');
     final customerName = _items.first.customerName ?? 'Guest';
 
     return _section(
       Column(
         children: [
-          _row('INVOICE NO:', '#${_sale!.id?.substring(0, 8).toUpperCase() ?? 'N/A'}'),
+          _row('INVOICE NO:', '#${_sale!.id?.substring(0, 14).toUpperCase() ?? 'N/A'}'),
           _row('DATE:', dateFormat.format(_sale!.saleDate)),
-          _row('CASHIER:', 'Admin User'),
+          _row('CASHIER:', _cashierName),
           _row('CUSTOMER:', customerName),
         ],
       ),
@@ -500,6 +491,11 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
   Widget _totalSection() {
     if (_sale == null) return const SizedBox.shrink();
 
+    // Calculate remaining payment
+    final advancePayment = _sale!.advancePayment ?? 0.0;
+    final totalAmount = _sale!.total;
+    final remainingPayment = totalAmount - advancePayment;
+
     return _section(
       Column(
         children: [
@@ -519,12 +515,37 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
           const SizedBox(height: 8),
           _row(
             'TOTAL PAYABLE:',
-            '\$${_sale!.total.toStringAsFixed(2)}',
+            '\$${totalAmount.toStringAsFixed(2)}',
             bold: true,
             fontSize: 16,
           ),
+
+          // ✅ ADVANCE PAYMENT SECTION (exactly matching sales page format)
+          if (advancePayment > 0) ...[
+            const SizedBox(height: 8),
+            _row(
+              'ADVANCE PAYMENT:',
+              '-\$${advancePayment.toStringAsFixed(2)}',
+              valueColor: Colors.green.shade700,
+              fontSize: 14,
+            ),
+            Container(
+              height: 1,
+              margin: const EdgeInsets.symmetric(vertical: 8),
+              color: Colors.grey.shade400,
+            ),
+            _row(
+              'COD AMOUNT:',
+              '\$${remainingPayment.toStringAsFixed(2)}',
+              bold: true,
+              valueColor: const Color(0xffFE691E),
+              fontSize: 16,
+            ),
+          ],
+
           const SizedBox(height: 12),
           _row('PAYMENT METHOD:', _sale!.paymentMethod.toUpperCase()),
+
           if (_sale!.notes != null && _sale!.notes!.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 8),
@@ -560,26 +581,36 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
   }
 
   Widget _footer() {
-    return const Padding(
-      padding: EdgeInsets.all(16),
+    return Padding(
+      padding: const EdgeInsets.all(16),
       child: Column(
         children: [
-          Text(
-            'THANK YOU FOR YOUR PURCHASE!',
+          const Text(
+            'THANK YOU FOR SHOPPING!',
             style: TextStyle(
               fontWeight: FontWeight.bold,
               fontSize: 14,
             ),
           ),
-          SizedBox(height: 8),
-          Text(
-            'Visit us again soon\n'
-                'Follow us @retailpos\n\n'
-                'No refunds without receipt\n'
-                'Exchange within 30 days\n\n'
-                'Powered by RetailPOS v1.0',
+          const SizedBox(height: 8),
+          RichText(
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 11, color: Colors.grey),
+            text: TextSpan(
+              style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
+              children: <TextSpan>[
+                const TextSpan(text: 'For online shopping\nWebsite: '),
+                TextSpan(
+                  text: 'www.izzahs.com',
+                  style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey.shade900),
+                ),
+                const TextSpan(text: '\nInstagram: '),
+                TextSpan(
+                  text: 'izzah.s_collection',
+                  style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey.shade900),
+                ),
+                const TextSpan(text: '\n\nNo refunds without receipt\nExchange within 15 days\n\nPowered by IZZAHS COLLECTION'),
+              ],
+            ),
           ),
         ],
       ),

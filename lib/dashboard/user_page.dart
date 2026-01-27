@@ -661,6 +661,12 @@ class _UsersPageState extends State<UsersPage> {
     bool isActive = user.isActive;
     bool isLoading = false;
 
+    // ✅ NEW: Image editing variables
+    XFile? selectedImage;
+    Uint8List? imageBytes;
+    String? currentImageUrl = user.imageUrl;
+    bool removeImage = false;
+
     showDialog(
       context: context,
       builder: (dialogContext) {
@@ -677,11 +683,125 @@ class _UsersPageState extends State<UsersPage> {
                 ),
               )
                   : SizedBox(
-                width: 400,
+                width: 450,
                 child: SingleChildScrollView(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // ✅ NEW: Image Section
+                      const Text(
+                        "User Image",
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          // Show current or new image
+                          if (!removeImage && (imageBytes != null || currentImageUrl != null))
+                            Padding(
+                              padding: const EdgeInsets.only(right: 16),
+                              child: Stack(
+                                children: [
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(40),
+                                    child: imageBytes != null
+                                        ? Image.memory(
+                                      imageBytes!,
+                                      width: 80,
+                                      height: 80,
+                                      fit: BoxFit.cover,
+                                    )
+                                        : Image.network(
+                                      currentImageUrl!,
+                                      width: 80,
+                                      height: 80,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (context, error, stackTrace) {
+                                        return CircleAvatar(
+                                          radius: 40,
+                                          backgroundColor: Colors.grey.shade300,
+                                          child: Icon(Icons.person, color: Colors.grey.shade600, size: 40),
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                  Positioned(
+                                    top: 0,
+                                    right: 0,
+                                    child: GestureDetector(
+                                      onTap: () {
+                                        setDialogState(() {
+                                          removeImage = true;
+                                          selectedImage = null;
+                                          imageBytes = null;
+                                        });
+                                      },
+                                      child: Container(
+                                        padding: const EdgeInsets.all(4),
+                                        decoration: BoxDecoration(
+                                          color: Colors.red,
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: const Icon(
+                                          Icons.close,
+                                          color: Colors.white,
+                                          size: 16,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )
+                          else
+                            CircleAvatar(
+                              radius: 40,
+                              backgroundColor: Colors.grey.shade300,
+                              child: Icon(Icons.person, color: Colors.grey.shade600, size: 40),
+                            ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: () async {
+                                try {
+                                  final ImagePicker picker = ImagePicker();
+                                  final XFile? image = await picker.pickImage(
+                                    source: ImageSource.gallery,
+                                    maxWidth: 800,
+                                    maxHeight: 800,
+                                    imageQuality: 85,
+                                  );
+
+                                  if (image != null) {
+                                    final bytes = await image.readAsBytes();
+                                    setDialogState(() {
+                                      selectedImage = image;
+                                      imageBytes = bytes;
+                                      removeImage = false;
+                                    });
+                                  }
+                                } catch (e) {
+                                  if (builderContext.mounted) {
+                                    ScaffoldMessenger.of(builderContext).showSnackBar(
+                                      SnackBar(
+                                        content: Text('Error picking image: $e'),
+                                        backgroundColor: Colors.red,
+                                      ),
+                                    );
+                                  }
+                                }
+                              },
+                              icon: const Icon(Icons.upload_file),
+                              label: Text(currentImageUrl != null || imageBytes != null
+                                  ? "Change Image"
+                                  : "Upload Image"),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const Divider(height: 24),
+
                       TextField(
                         controller: fullNameController,
                         decoration: const InputDecoration(
@@ -807,6 +927,53 @@ class _UsersPageState extends State<UsersPage> {
                     });
 
                     try {
+                      String? newImageUrl = currentImageUrl;
+
+                      // ✅ Handle image update
+                      if (imageBytes != null && selectedImage != null) {
+                        // Upload new image
+                        print('Uploading new image...');
+                        final String fileExt = selectedImage!.name.split('.').last;
+                        final String fileName = '${usernameController.text}_${DateTime.now().millisecondsSinceEpoch}.$fileExt';
+
+                        await _supabase.storage.from('user-images').uploadBinary(
+                          fileName,
+                          imageBytes!,
+                          fileOptions: FileOptions(
+                            contentType: 'image/$fileExt',
+                            upsert: true,
+                          ),
+                        );
+
+                        newImageUrl = _supabase.storage.from('user-images').getPublicUrl(fileName);
+                        print('New image uploaded: $newImageUrl');
+
+                        // Delete old image if exists
+                        if (currentImageUrl != null && currentImageUrl!.isNotEmpty) {
+                          try {
+                            final oldFileName = currentImageUrl!.split('/').last;
+                            await _supabase.storage.from('user-images').remove([oldFileName]);
+                            print('Old image deleted');
+                          } catch (e) {
+                            print('Error deleting old image: $e');
+                          }
+                        }
+                      } else if (removeImage) {
+                        // Remove image
+                        newImageUrl = null;
+
+                        // Delete old image from storage
+                        if (currentImageUrl != null && currentImageUrl!.isNotEmpty) {
+                          try {
+                            final oldFileName = currentImageUrl!.split('/').last;
+                            await _supabase.storage.from('user-images').remove([oldFileName]);
+                            print('Image removed from storage');
+                          } catch (e) {
+                            print('Error removing image: $e');
+                          }
+                        }
+                      }
+
                       // Update users table
                       await _supabase.from('users').update({
                         'username': usernameController.text,
@@ -815,6 +982,7 @@ class _UsersPageState extends State<UsersPage> {
                         'role': selectedRole,
                         'id_card_number': idCardController.text,
                         'is_active': isActive,
+                        'image_url': newImageUrl,
                       }).eq('id', user.id);
 
                       // Update profiles table (only role, email, full_name)
@@ -838,6 +1006,8 @@ class _UsersPageState extends State<UsersPage> {
                         );
                       }
                     } catch (e) {
+                      print('Error updating user: $e');
+
                       // Hide loading
                       if (mounted) {
                         setDialogState(() {
@@ -856,7 +1026,7 @@ class _UsersPageState extends State<UsersPage> {
                       }
                     }
                   },
-                  child: const Text('Update',style: TextStyle(color: Colors.white),),
+                  child: const Text('Update', style: TextStyle(color: Colors.white)),
                 ),
               ],
             );
@@ -1372,19 +1542,47 @@ class _UsersPageState extends State<UsersPage> {
           bottom: BorderSide(color: Colors.grey.shade200),
         ),
       ),
-      child: Row( // This is the Row at line 1402
+      child: Row(
         children: [
+          // ✅ User image - fixed width, not Expanded
+          Padding(
+            padding: const EdgeInsets.only(right: 16),
+            child: user.imageUrl != null && user.imageUrl!.isNotEmpty
+                ? ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: Image.network(
+                user.imageUrl!,
+                width: 40,
+                height: 40,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) {
+                  return CircleAvatar(
+                    radius: 20,
+                    backgroundColor: Colors.grey.shade300,
+                    child: Icon(Icons.person, color: Colors.grey.shade600, size: 24),
+                  );
+                },
+              ),
+            )
+                : CircleAvatar(
+              radius: 20,
+              backgroundColor: Colors.grey.shade300,
+              child: Icon(Icons.person, color: Colors.grey.shade600, size: 24),
+            ),
+          ),
           Expanded(flex: 2, child: Text(user.username, style: textStyle)),
-          Expanded(flex: 2, child: Text(user.idCardNumber, style: textStyle)), // Adjusted flex from 3 to 2
+          Expanded(flex: 2, child: Text(user.idCardNumber, style: textStyle)),
           Expanded(
-            flex: 2, // Adjusted flex from 2 to 2 (was correct)
+            flex: 2,
             child: Padding(
               padding: const EdgeInsets.only(left: 0),
               child: Chip(
                 label: Text(user.role),
-                labelStyle: TextStyle(fontSize: 12,
-                    color: Colors.grey.shade800,
-                    fontWeight: FontWeight.bold),
+                labelStyle: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey.shade800,
+                  fontWeight: FontWeight.bold,
+                ),
                 backgroundColor: Colors.grey.shade200,
                 padding: const EdgeInsets.symmetric(horizontal: 4),
                 visualDensity: VisualDensity.compact,
@@ -1392,7 +1590,7 @@ class _UsersPageState extends State<UsersPage> {
             ),
           ),
           Expanded(
-            flex: 1, // Adjusted flex from 2 to 1
+            flex: 1,
             child: Padding(
               padding: const EdgeInsets.only(left: 0),
               child: Chip(
@@ -1400,22 +1598,23 @@ class _UsersPageState extends State<UsersPage> {
                 labelStyle: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.bold,
-                  color: user.isActive ? Colors.green.shade800 : Colors.red
-                      .shade800,
+                  color: user.isActive ? Colors.green.shade800 : Colors.red.shade800,
                 ),
-                backgroundColor: user.isActive ? Colors.green.shade100 : Colors
-                    .red.shade100,
+                backgroundColor: user.isActive ? Colors.green.shade100 : Colors.red.shade100,
                 padding: const EdgeInsets.symmetric(horizontal: 4),
                 visualDensity: VisualDensity.compact,
               ),
             ),
           ),
-          Expanded(flex: 2, // Adjusted flex from 2 to 2 (was correct)
-              child: Align(
-                  alignment: Alignment(1, 0),
-                  child: Text(_formatLastLogin(user.lastLogin), style: textStyle))),
           Expanded(
-            flex: 3, // Adjusted flex from 2 to 3 to give more space for buttons
+            flex: 2,
+            child: Align(
+              alignment: Alignment(1, 0),
+              child: Text(_formatLastLogin(user.lastLogin), style: textStyle),
+            ),
+          ),
+          Expanded(
+            flex: 3,
             child: Row(
               mainAxisAlignment: MainAxisAlignment.values[2],
               children: [
@@ -1445,4 +1644,5 @@ class _UsersPageState extends State<UsersPage> {
         ],
       ),
     );
-  }}
+  }
+}

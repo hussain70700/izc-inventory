@@ -778,6 +778,7 @@ class SupabaseService {
   // ============================================
 
   /// Create a sale and update inventory
+  /// Create a sale and update inventory
   Future<String> createSale({
     required String customerId,
     required List<CartItem> items,
@@ -787,12 +788,45 @@ class SupabaseService {
     required double total,
     required String paymentMethod,
     String? notes,
+    double? advancePayment,
+    String? status,
   }) async {
     try {
       print('Creating sale for customer: $customerId');
       print('Items count: ${items.length}');
-      print('Total: \$${total.toStringAsFixed(2)}');
+      print('Payment Method: $paymentMethod');
 
+      // ✅ VALIDATION: Ensure advance payment doesn't exceed total
+      if (advancePayment != null && advancePayment > total) {
+        throw Exception('Advance payment (\$${advancePayment.toStringAsFixed(2)}) cannot exceed total (\$${total.toStringAsFixed(2)})');
+      }
+
+      // ✅ FIX: Store the ACTUAL total in database, not the remaining amount!
+      final amountToStore = total;  // THIS WAS THE BUG - it was: total - advancePayment
+
+      final actualAdvancePayment = (paymentMethod == 'COD' && advancePayment != null)
+          ? advancePayment
+          : 0.00;
+
+      // ✅ Determine status if not provided
+      String finalStatus;
+      if (status != null) {
+        finalStatus = status;
+      } else {
+        // Default status logic
+        if (paymentMethod == 'COD') {
+          finalStatus = (actualAdvancePayment >= total) ? 'Completed' : 'In Process';
+        } else {
+          finalStatus = 'Completed';
+        }
+      }
+
+      print('Actual Total: \$${total.toStringAsFixed(2)}');
+      print('Advance Payment: \$${actualAdvancePayment.toStringAsFixed(2)}');
+      print('Remaining COD Amount: \$${(total - actualAdvancePayment).toStringAsFixed(2)}');
+      print('Status: $finalStatus');
+
+      // ✅ Insert sale - now storing the CORRECT total
       final saleData = await _supabase
           .from('sales')
           .insert({
@@ -800,10 +834,12 @@ class SupabaseService {
         'subtotal': subtotal,
         'discount': discount,
         'tax': tax,
-        'total': total,
+        'total': amountToStore,  // Now storing actual total, not remaining!
         'payment_method': paymentMethod,
         'notes': notes,
         'sale_date': DateTime.now().toIso8601String(),
+        'advance_payment': actualAdvancePayment,
+        'status': finalStatus,
       })
           .select()
           .single();
@@ -811,6 +847,17 @@ class SupabaseService {
       final saleId = saleData['id'];
       print('Sale created with ID: $saleId');
 
+      // ✅ Generate invoice number using the sale ID
+      final invoiceNumber = generateInvoiceNumber(saleId);
+      print('Generated Invoice Number: $invoiceNumber');
+
+      // ✅ Update the sale with invoice number
+      await _supabase
+          .from('sales')
+          .update({'invoice_number': invoiceNumber})
+          .eq('id', saleId);
+
+      // Process sale items (rest of the code remains the same)
       for (final item in items) {
         print('Processing item: ${item.name} x ${item.qty}');
 
@@ -849,12 +896,15 @@ class SupabaseService {
           'old_stock': currentStock,
           'new_stock': newStock,
           'change_amount': -item.qty,
-          'reason': 'Sale #$saleId',
+          'reason': 'Sale $invoiceNumber',
           'is_restock': false,
         });
       }
 
-      print('Sale completed successfully!');
+      print('✅ Sale completed successfully with status: $finalStatus!');
+      if (paymentMethod == 'COD' && actualAdvancePayment > 0) {
+        print('COD Sale - Advance: \$${actualAdvancePayment.toStringAsFixed(2)}, Remaining: \$${(total - actualAdvancePayment).toStringAsFixed(2)}');
+      }
 
       // Refresh data after sale
       await fetchProducts();
@@ -866,7 +916,73 @@ class SupabaseService {
       throw Exception('Failed to create sale: ${e.toString()}');
     }
   }
+  // Delete all sale items for a sale
+  Future<void> deleteSaleItems(String saleId) async {
+    try {
+      await _supabase
+          .from('sale_items')
+          .delete()
+          .eq('sale_id', saleId);
+    } catch (e) {
+      throw Exception('Failed to delete sale items: $e');
+    }
+  }
 
+// Update sale details
+  Future<void> updateSale({
+    required String saleId,
+    required double subtotal,
+    required double discount,
+    required double tax,
+    required double total,
+    required String paymentMethod,
+    double? advancePayment,
+    String? status,
+  }) async {
+    try {
+      await _supabase
+          .from('sales')
+          .update({
+        'subtotal': subtotal,
+        'discount': discount,
+        'tax': tax,
+        'total': total,
+        'payment_method': paymentMethod,
+        'advance_payment': advancePayment,
+        'status': status ?? 'Exchanged',
+      })
+          .eq('id', saleId);
+    } catch (e) {
+      throw Exception('Failed to update sale: $e');
+    }
+  }
+
+// Add a single sale item
+  Future<void> addSaleItem({
+    required String saleId,
+    required String productId,
+    required int quantity,
+    required double price,
+  }) async {
+    try {
+      await _supabase.from('sale_items').insert({
+        'sale_id': saleId,
+        'product_id': productId,
+        'quantity': quantity,
+        'price': price,
+        'total': price * quantity,
+      });
+    } catch (e) {
+      throw Exception('Failed to add sale item: $e');
+    }
+  }
+// Helper function to generate invoice number
+  String generateInvoiceNumber(String saleId) {
+    final now = DateTime.now();
+    final month = now.month.toString().padLeft(2, '0');
+    final year = now.year.toString().substring(2);
+    return 'IZC-$month$year-$saleId';
+  }
   // ============================================
   // SALES QUERIES - UPDATED WITH IMAGE URL
   // ============================================
@@ -949,7 +1065,240 @@ class SupabaseService {
       return 0.0;
     }
   }
+// Add these methods to your SupabaseService class
 
+  /// Process a return - refunds customer and restores stock
+  Future<void> processReturn(String saleId) async {
+    try {
+      print('Processing return for sale: $saleId');
+
+      // Get the original sale
+      final saleData = await _supabase
+          .from('sales')
+          .select()
+          .eq('id', saleId)
+          .single();
+
+      // Get sale items
+      final items = await _supabase
+          .from('sale_items')
+          .select('*, products(*)')
+          .eq('sale_id', saleId);
+
+      if (items.isEmpty) {
+        throw Exception('No items found for this sale');
+      }
+
+      // Restore stock for each item
+      for (var item in items) {
+        final productId = item['product_id'];
+        final quantity = item['quantity'] as int;
+        final productName = item['products']['name'];
+
+        // Get current stock
+        final product = await _supabase
+            .from('products')
+            .select('stock')
+            .eq('id', productId)
+            .single();
+
+        final currentStock = product['stock'] as int;
+        final newStock = currentStock + quantity;
+
+        // Update stock
+        await _supabase
+            .from('products')
+            .update({'stock': newStock})
+            .eq('id', productId);
+
+        // Record in stock history
+        await _supabase.from('stock_history').insert({
+          'product_id': productId,
+          'product_name': productName,
+          'old_stock': currentStock,
+          'new_stock': newStock,
+          'change_amount': quantity,
+          'reason': 'Return from sale $saleId',
+          'is_restock': true,
+        });
+
+        print('✅ Restored $quantity units of $productName');
+      }
+
+      // Mark sale as returned
+      await _supabase
+          .from('sales')
+          .update({
+        'status': 'Returned',
+        'notes': (saleData['notes'] ?? '') + '\n[RETURNED on ${DateTime.now().toIso8601String()}]',
+      })
+          .eq('id', saleId);
+
+      print('✅ Return processed successfully');
+
+      // Refresh local data
+      await fetchProducts();
+      await fetchStockHistory();
+
+    } catch (e) {
+      print('❌ Error processing return: $e');
+      throw Exception('Failed to process return: $e');
+    }
+  }
+
+  /// Process an exchange - returns old items and allows new purchase
+  Future<Map<String, dynamic>> processExchange(String originalSaleId) async {
+    try {
+      print('Processing exchange for sale: $originalSaleId');
+
+      // Get the original sale
+      final saleData = await _supabase
+          .from('sales')
+          .select('*, customers(*)')
+          .eq('id', originalSaleId)
+          .single();
+
+      // Get sale items
+      final items = await _supabase
+          .from('sale_items')
+          .select('*, products(*)')
+          .eq('sale_id', originalSaleId);
+
+      if (items.isEmpty) {
+        throw Exception('No items found for this sale');
+      }
+
+      // Restore stock for all original items (like a return)
+      for (var item in items) {
+        final productId = item['product_id'];
+        final quantity = item['quantity'] as int;
+        final productName = item['products']['name'];
+
+        // Get current stock
+        final product = await _supabase
+            .from('products')
+            .select('stock')
+            .eq('id', productId)
+            .single();
+
+        final currentStock = product['stock'] as int;
+        final newStock = currentStock + quantity;
+
+        // Update stock
+        await _supabase
+            .from('products')
+            .update({'stock': newStock})
+            .eq('id', productId);
+
+        // Record in stock history
+        await _supabase.from('stock_history').insert({
+          'product_id': productId,
+          'product_name': productName,
+          'old_stock': currentStock,
+          'new_stock': newStock,
+          'change_amount': quantity,
+          'reason': 'Exchange from sale $originalSaleId',
+          'is_restock': true,
+        });
+
+        print('✅ Restored $quantity units of $productName for exchange');
+      }
+
+      // Mark original sale as exchanged
+      await _supabase
+          .from('sales')
+          .update({
+        'status': 'Exchanged',
+        'notes': (saleData['notes'] ?? '') + '\n[EXCHANGED on ${DateTime.now().toIso8601String()}]',
+      })
+          .eq('id', originalSaleId);
+
+      print('✅ Exchange initiated - original items returned to stock');
+
+      // Refresh local data
+      await fetchProducts();
+      await fetchStockHistory();
+
+      // Return customer info and original sale data for the new sale
+      return {
+        'customer': saleData['customers'],
+        'original_sale_id': originalSaleId,
+        'original_total': saleData['total'],
+      };
+
+    } catch (e) {
+      print('❌ Error processing exchange: $e');
+      throw Exception('Failed to process exchange: $e');
+    }
+  }
+
+  /// Get detailed sale items with customer info
+  Future<List<DetailedSaleItem>> getDetailedSaleItems(String saleId) async {
+    try {
+      print('🔍 Fetching detailed sale items for sale: $saleId');
+
+      final response = await _supabase
+          .from('sale_items')
+          .select('''
+          *,
+          sales!inner(
+            sale_date,
+            customer_id,
+            customers!inner(
+              id,
+              name
+            )
+          ),
+          products(
+            sku,
+            name,
+            image_url
+          )
+        ''')
+          .eq('sale_id', saleId);
+
+      print('📦 Raw response: $response');
+
+      if (response.isEmpty) {
+        print('⚠️ No items found for sale: $saleId');
+        return [];
+      }
+
+      final items = response.map((item) {
+        print('Processing item: $item');
+
+        // Extract nested data safely
+        final sales = item['sales'] as Map<String, dynamic>?;
+        final customers = sales?['customers'] as Map<String, dynamic>?;
+        final products = item['products'] as Map<String, dynamic>?;
+
+        return DetailedSaleItem(
+          id: item['id'] as String,
+          saleId: item['sale_id'] as String,
+          productId: item['product_id'] as String,
+          quantity: item['quantity'] as int,
+          price: (item['price'] as num).toDouble(),
+          total: (item['total'] as num).toDouble(),
+          productName: products?['name'] as String? ?? 'Unknown Product',
+          sku: products?['sku'] as String? ?? 'N/A',
+          productImageUrl: products?['image_url'] as String?,
+          saleDate: sales?['sale_date'] != null
+              ? DateTime.parse(sales!['sale_date'] as String)
+              : DateTime.now(),
+          customerId: customers?['id'] as String?,
+          customerName: customers?['name'] as String?,
+        );
+      }).toList();
+
+      print('✅ Successfully processed ${items.length} sale items');
+      return items;
+
+    } catch (e, stackTrace) {
+      print('❌ Error fetching detailed sale items: $e');
+      print('Stack trace: $stackTrace');
+      throw Exception('Failed to fetch sale items: $e');
+    }
+  }
   /// Get monthly sales total
   Future<double> getMonthlySalesTotal() async {
     try {
@@ -1092,83 +1441,7 @@ class SupabaseService {
 // Replace your getDetailedSaleItems method with this:
 
   /// Get detailed sale items - FIXED to handle null customer data
-  Future<List<DetailedSaleItem>> getDetailedSaleItems(String saleId) async {
-    try {
-      print('🔍 Fetching detailed sale items for sale: $saleId');
 
-      // Query sale_items with joins to get all necessary data
-      final response = await _supabase
-          .from('sale_items')
-          .select('''
-          id,
-          sale_id,
-          product_id,
-          quantity,
-          price,
-          total,
-          sales!inner (
-            sale_date,
-            customer_id,
-            customers (
-              id,
-              name
-            )
-          ),
-          products!inner (
-            name,
-            sku,
-            image_url
-          )
-        ''')
-          .eq('sale_id', saleId);
-
-      print('📦 Raw response: $response');
-
-      if (response == null || (response as List).isEmpty) {
-        print('⚠️ No sale items found for sale: $saleId');
-        return [];
-      }
-
-      final items = (response as List).map((item) {
-        print('Processing item: $item');
-
-        // Extract nested data safely
-        final saleData = item['sales'] as Map<String, dynamic>?;
-        final customerData = saleData?['customers'] as Map<String, dynamic>?;
-        final productData = item['products'] as Map<String, dynamic>;
-
-        // Extract values with null safety
-        final customerId = customerData?['id'] as String?;
-        final customerName = customerData?['name'] as String?;
-        final saleDate = saleData?['sale_date'] as String?;
-
-        return DetailedSaleItem(
-          id: item['id'] as String,
-          saleId: item['sale_id'] as String,
-          saleDate: saleDate != null
-              ? DateTime.parse(saleDate)
-              : DateTime.now(),
-          customerId: customerId,  // Can be null
-          customerName: customerName,  // Can be null
-          productId: item['product_id'] as String,
-          productName: productData['name'] as String,
-          sku: productData['sku'] as String,
-          productImageUrl: productData['image_url'] as String?,
-          quantity: item['quantity'] as int,
-          price: (item['price'] as num).toDouble(),
-          total: (item['total'] as num).toDouble(),
-        );
-      }).toList();
-
-      print('✅ Successfully processed ${items.length} sale items');
-      return items;
-
-    } catch (e, stackTrace) {
-      print('❌ Error fetching sale items: $e');
-      print('StackTrace: $stackTrace');
-      throw Exception('Failed to fetch sale items: $e');
-    }
-  }
 
   // ============================================
   // UTILITY METHODS

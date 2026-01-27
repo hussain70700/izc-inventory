@@ -143,11 +143,7 @@ class _LoginPageState extends State<LoginPage> {
                             color: Color(0xFFFFE0D3),
                             shape: BoxShape.circle,
                           ),
-                          child: const Icon(
-                            Icons.hexagon,
-                            color: Color(0xFFE86B32),
-                            size: 30,
-                          ),
+                          child: Image.asset('images/Logo.png',width: 200,),
                         ),
                       ),
                       const SizedBox(height: 16),

@@ -1,11 +1,23 @@
-// ignore: avoid_web_libraries_in_flutter
 import 'dart:html' as html;
+import 'dart:typed_data';
+import 'dart:convert';
 
-Future<void> downloadFile(List<int> bytes, String fileName) async {
-  final blob = html.Blob([bytes], 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-  final url = html.Url.createObjectUrlFromBlob(blob);
-  final anchor = html.AnchorElement(href: url)
+Future<void> downloadFile(Uint8List bytes, String fileName) async {
+  // Convert to base64
+  final base64Data = base64Encode(bytes);
+
+  // Create data URL with proper MIME type
+  final dataUrl = 'data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,$base64Data';
+
+  // Create and trigger download
+  final anchor = html.AnchorElement(href: dataUrl)
     ..setAttribute('download', fileName)
-    ..click();
-  html.Url.revokeObjectUrl(url);
+    ..style.display = 'none';
+
+  html.document.body?.append(anchor);
+  anchor.click();
+
+  // Clean up
+  await Future.delayed(const Duration(milliseconds: 100));
+  anchor.remove();
 }

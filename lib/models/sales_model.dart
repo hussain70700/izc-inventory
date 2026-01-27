@@ -8,6 +8,7 @@ class Sale {
   final String paymentMethod;
   final DateTime saleDate;
   final String? notes;
+  final double? advancePayment; // ✅ Added advance payment field
 
   Sale({
     this.id,
@@ -19,6 +20,7 @@ class Sale {
     required this.paymentMethod,
     required this.saleDate,
     this.notes,
+    this.advancePayment, // ✅ Added to constructor
   });
 
   factory Sale.fromJson(Map<String, dynamic> json) => Sale(
@@ -31,5 +33,8 @@ class Sale {
     paymentMethod: json['payment_method'],
     saleDate: DateTime.parse(json['sale_date']),
     notes: json['notes'],
+    advancePayment: json['advance_payment'] != null
+        ? (json['advance_payment'] as num).toDouble()
+        : null, // ✅ Added to fromJson
   );
 }

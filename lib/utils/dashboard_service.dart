@@ -21,6 +21,9 @@ class DashboardData {
   final String totalSales;
   final String onlineSales;
   final String offlineSales;
+  final double codAmountBooked; // ✅ NEW
+  final int codOrdersCount; // ✅ NEW
+  final double codPercentage; // ✅ NEW
 
   const DashboardData({
     required this.totalBooked,
@@ -37,6 +40,9 @@ class DashboardData {
     required this.totalSales,
     required this.onlineSales,
     required this.offlineSales,
+    this.codAmountBooked = 0.0, // ✅ NEW with default
+    this.codOrdersCount = 0, // ✅ NEW with default
+    this.codPercentage = 0.0, // ✅ NEW with default
   });
 }
 
@@ -58,6 +64,9 @@ class DashboardService {
       totalSales: "\$83,430.00",
       onlineSales: "\$55,120.00",
       offlineSales: "\$28,310.00",
+      codAmountBooked: 12400.00, // ✅ NEW
+      codOrdersCount: 45, // ✅ NEW
+      codPercentage: 0.65, // ✅ NEW
     ),
   };
 

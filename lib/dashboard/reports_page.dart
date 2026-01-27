@@ -28,6 +28,7 @@ class _ReportsPageState extends State<ReportsPage> {
 
   // Data
   List<Map<String, dynamic>> _salesHistory = [];
+  List<Map<String, dynamic>> _filteredSalesHistory = [];
   List<Map<String, dynamic>> _bestSellingProducts = [];
   List<_SalesData> _chartData = [];
 
@@ -37,14 +38,56 @@ class _ReportsPageState extends State<ReportsPage> {
   double _totalSales = 0.0;
   int _ordersCount = 0;
 
+  // Status counts
+  Map<String, int> _statusCounts = {
+    'Completed': 0,
+    'Returned': 0,
+  };
+
   // Filter
   String _selectedFilter = 'Today';
   final List<String> _filterOptions = ['Today', 'Last 7 Days', 'Monthly'];
+
+  // Search
+  final TextEditingController _searchController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _loadData();
+    _searchController.addListener(_filterSales);
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _filterSales() {
+    final query = _searchController.text.toLowerCase();
+
+    if (query.isEmpty) {
+      setState(() {
+        _filteredSalesHistory = _salesHistory;
+      });
+      return;
+    }
+
+    setState(() {
+      _filteredSalesHistory = _salesHistory.where((sale) {
+        final customer = sale['customers'];
+        final customerName = customer['name']?.toString().toLowerCase() ?? '';
+        final paymentMethod = sale['payment_method']?.toString().toLowerCase() ?? '';
+        final total = sale['total']?.toString().toLowerCase() ?? '';
+        final invoiceId = sale['id']?.toString().toLowerCase() ?? '';
+
+        return customerName.contains(query) ||
+            paymentMethod.contains(query) ||
+            total.contains(query) ||
+            invoiceId.contains(query);
+      }).toList();
+    });
   }
 
   Future<void> _loadData() async {
@@ -95,18 +138,22 @@ class _ReportsPageState extends State<ReportsPage> {
 
       for (var sale in sales) {
         final amount = (sale['total'] as num).toDouble();
-        totalSales += amount;
+        final status = sale['status'] ?? 'Completed';
 
-        // COD is online, everything else is in-store
-        if (sale['payment_method'] == 'COD') {
-          onlineSales += amount;
-        } else {
-          instoreSales += amount;
+        // Count completed and delivered sales in totals (exclude returned)
+        if (status == 'Completed' || status == 'Delivered') {
+          totalSales += amount;
+          if (sale['payment_method'] == 'COD') {
+            onlineSales += amount;
+          } else {
+            instoreSales += amount;
+          }
         }
       }
 
       setState(() {
         _salesHistory = sales;
+        _filteredSalesHistory = sales;
         _bestSellingProducts = bestSelling;
         _onlineSales = onlineSales;
         _instoreSales = instoreSales;
@@ -122,12 +169,16 @@ class _ReportsPageState extends State<ReportsPage> {
     final Map<String, double> salesByDate = {};
 
     for (var sale in _salesHistory) {
-      final date = DateTime.parse(sale['sale_date']);
-      final dateKey = _selectedFilter == 'Today'
-          ? DateFormat('HH:00').format(date)
-          : DateFormat('MMM dd').format(date);
+      final status = sale['status'] ?? 'Completed';
+      // Include completed and delivered sales in chart
+      if (status == 'Completed' || status == 'Delivered') {
+        final date = DateTime.parse(sale['sale_date']);
+        final dateKey = _selectedFilter == 'Today'
+            ? DateFormat('HH:00').format(date)
+            : DateFormat('MMM dd').format(date);
 
-      salesByDate[dateKey] = (salesByDate[dateKey] ?? 0) + (sale['total'] as num).toDouble();
+        salesByDate[dateKey] = (salesByDate[dateKey] ?? 0) + (sale['total'] as num).toDouble();
+      }
     }
 
     final sortedEntries = salesByDate.entries.toList()
@@ -169,6 +220,14 @@ class _ReportsPageState extends State<ReportsPage> {
         backgroundColor: Colors.red,
       ),
     );
+  }
+
+  String _getInvoiceDisplay(String? id) {
+    if (id == null || id.isEmpty) return 'N/A';
+    if (id.startsWith('IZC-')) {
+      return id;
+    }
+    return '#${id.substring(0, 8).toUpperCase()}';
   }
 
   Future<pw.Font> _loadFont() async {
@@ -225,6 +284,9 @@ class _ReportsPageState extends State<ReportsPage> {
                 _buildPdfStatCard('Orders', _ordersCount.toString(), font, boldFont),
               ],
             ),
+// Remove the second pw.Row that had Completed and Returned stats
+            pw.SizedBox(height: 10),
+
             pw.SizedBox(height: 30),
             if (_bestSellingProducts.isNotEmpty) ...[
               pw.Text(
@@ -260,15 +322,18 @@ class _ReportsPageState extends State<ReportsPage> {
               headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
               headerDecoration: const pw.BoxDecoration(color: PdfColors.grey300),
               cellPadding: const pw.EdgeInsets.all(8),
-              headers: ['Date', 'Customer', 'Payment Method', 'Total'],
+              headers: ['Invoice', 'Date', 'Customer', 'Payment', 'Total', 'Status'],
               data: _salesHistory.take(30).map((sale) {
                 final customer = sale['customers'];
                 final date = DateTime.parse(sale['sale_date']);
+                final status = sale['status'] ?? 'Completed';
                 return [
+                  _getInvoiceDisplay(sale['id']),
                   DateFormat('MMM dd, yyyy').format(date),
                   customer['name'],
                   sale['payment_method'],
                   '\$${sale['total'].toStringAsFixed(2)}',
+                  status == 'Returned' ? 'Returned' : '', // Only show if returned
                 ];
               }).toList(),
             ),
@@ -408,6 +473,7 @@ class _ReportsPageState extends State<ReportsPage> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
         title: const Text('Export Report'),
         content: const Text('Choose export format:'),
         actions: [
@@ -442,15 +508,15 @@ class _ReportsPageState extends State<ReportsPage> {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.white,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.grey.withOpacity(0.2),
-                  spreadRadius: 0,
-                  blurRadius: 6,
-                  offset: Offset(0, 8)
-                )
-              ]
+                color: Colors.white,
+                boxShadow: [
+                  BoxShadow(
+                      color: Colors.grey.withOpacity(0.2),
+                      spreadRadius: 0,
+                      blurRadius: 6,
+                      offset: const Offset(0, 8)
+                  )
+                ]
             ),
             child: Column(
               children: [
@@ -530,7 +596,7 @@ class _ReportsPageState extends State<ReportsPage> {
                         return Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            // Stats Grid (2x2)
+                            // Stats Grid (3x2)
                             SizedBox(
                               width: 500,
                               child: _buildStatsGrid(),
@@ -616,51 +682,139 @@ class _ReportsPageState extends State<ReportsPage> {
                     const SizedBox(height: 16),
                   ],
 
-                  // Recent Sales
+                  // Recent Sales with Search
                   Card(
                     elevation: 5,
                     color: Colors.white,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Padding(
-                          padding: EdgeInsets.all(16),
-                          child: Text(
-                            'Recent Sales',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
+                        Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Row(
+                            children: [
+                              const Text(
+                                'Recent Sales',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: TextField(
+                                  controller: _searchController,
+                                  decoration: InputDecoration(
+                                    hintText: 'Search by invoice, customer, payment method...',
+                                    prefixIcon: const Icon(Icons.search, size: 20),
+                                    suffixIcon: _searchController.text.isNotEmpty
+                                        ? IconButton(
+                                      icon: const Icon(Icons.clear, size: 20),
+                                      onPressed: () => _searchController.clear(),
+                                    )
+                                        : null,
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                      borderSide: BorderSide(color: Colors.grey.shade300),
+                                    ),
+                                    enabledBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                      borderSide: BorderSide(color: Colors.grey.shade300),
+                                    ),
+                                    focusedBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                      borderSide: const BorderSide(color: Color(0xFFE86B32), width: 2),
+                                    ),
+                                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                    isDense: true,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                         const Divider(height: 1),
-                        ListView.separated(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          itemCount: _salesHistory.take(20).length,
-                          separatorBuilder: (context, index) => const Divider(height: 1),
-                          itemBuilder: (context, index) {
-                            final sale = _salesHistory[index];
-                            final customer = sale['customers'];
-                            final date = DateTime.parse(sale['sale_date']);
+                        if (_filteredSalesHistory.isEmpty)
+                          const Padding(
+                            padding: EdgeInsets.all(40.0),
+                            child: Center(
+                              child: Text(
+                                'No sales found',
+                                style: TextStyle(color: Colors.grey),
+                              ),
+                            ),
+                          )
+                        else
+                          ListView.separated(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: _filteredSalesHistory.take(20).length,
+                            separatorBuilder: (context, index) => const Divider(height: 1),
+                            itemBuilder: (context, index) {
+                              final sale = _filteredSalesHistory[index];
+                              final customer = sale['customers'];
+                              final date = DateTime.parse(sale['sale_date']);
+                              final status = sale['status'] ?? 'Completed';
 
-                            return ListTile(
-                              title: Text(customer['name']),
-                              subtitle: Text(
-                                '${DateFormat('MMM dd, yyyy - hh:mm a').format(date)}\n'
-                                    'Payment: ${sale['payment_method']}',
-                              ),
-                              trailing: Text(
-                                '\$${sale['total'].toStringAsFixed(2)}',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
+                              // Only show status badge for Returned orders
+                              final isReturned = status == 'Returned';
+
+                              return ListTile(
+                                leading: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFE86B32).withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(4),
+                                    border: Border.all(
+                                      color: const Color(0xFFE86B32).withOpacity(0.3),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    _getInvoiceDisplay(sale['id']),
+                                    style: const TextStyle(
+                                      color: Color(0xFFE86B32),
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 11,
+                                    ),
+                                  ),
                                 ),
-                              ),
-                              isThreeLine: true,
-                            );
-                          },
-                        ),
+                                title: Row(
+                                  children: [
+                                    Expanded(child: Text(customer['name'])),
+                                    if (isReturned)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: Colors.red.withOpacity(0.1),
+                                          borderRadius: BorderRadius.circular(12),
+                                          border: Border.all(color: Colors.red.withOpacity(0.3)),
+                                        ),
+                                        child: const Text(
+                                          'Returned',
+                                          style: TextStyle(
+                                            color: Colors.red,
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                                subtitle: Text(
+                                  '${DateFormat('MMM dd, yyyy - hh:mm a').format(date)}\n'
+                                      'Payment: ${sale['payment_method']}',
+                                ),
+                                trailing: Text(
+                                  '\$${sale['total'].toStringAsFixed(2)}',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                                isThreeLine: true,
+                              );
+                            },
+                          ),
                       ],
                     ),
                   ),
@@ -765,7 +919,6 @@ class _ReportsPageState extends State<ReportsPage> {
                             if (value.toInt() >= 0 &&
                                 value.toInt() < _chartData.length) {
                               final index = value.toInt();
-                              // Show every nth label to avoid crowding
                               if (_chartData.length > 10 && index % 2 != 0) {
                                 return const SizedBox();
                               }
@@ -903,7 +1056,7 @@ class _StatCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       elevation: 5,
-color: Colors.white,
+      color: Colors.white,
       child: Padding(
         padding: const EdgeInsets.all(2),
         child: Column(
