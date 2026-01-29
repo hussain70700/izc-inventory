@@ -13,17 +13,18 @@ import 'auth/login.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  final SUPABASE_URL="https://lbhvhvpzllaudyilldwp.supabase.co";
+  final SUPABASE_ANON_KEY="sb_publishable_6TDVjvEK2-CArpIGPndVEg_wz73GZIN";
 
-  // Load environment variables
-  await dotenv.load(fileName: ".env");
+
 
   // Initialize Hive for session management (MUST be before Supabase)
   await SessionService.init();
 
   // Initialize Supabase
   await Supabase.initialize(
-    url: dotenv.env['SUPABASE_URL'] ?? '',
-    anonKey: dotenv.env['SUPABASE_ANON_KEY'] ?? '',
+    url: SUPABASE_URL ?? '',
+    anonKey: SUPABASE_ANON_KEY?? '',
   );
 
   runApp(const MyApp());
@@ -31,9 +32,9 @@ Future<void> main() async {
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
-
   @override
   Widget build(BuildContext context) {
+    
     return MaterialApp(
       title: 'Inventory Management',
       debugShowCheckedModeBanner: false,
