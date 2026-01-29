@@ -217,7 +217,7 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
         const SizedBox(height: 12),
         _buildStatCard(
           'Total Spent',
-          '\$${_totalSpent.toStringAsFixed(2)}',
+          'Rs ${_totalSpent.toStringAsFixed(2)}',
           Icons.attach_money,
           Colors.green,
         ),
@@ -237,7 +237,7 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
         Expanded(
           child: _buildStatCard(
             'Total Spent',
-            '\$${_totalSpent.toStringAsFixed(2)}',
+            'Rs ${_totalSpent.toStringAsFixed(2)}',
             Icons.attach_money,
             Colors.green,
           ),
@@ -403,7 +403,7 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
         ),
       ),
       title: Text(
-        '\$${total.toStringAsFixed(2)}',
+        'Rs ${total.toStringAsFixed(2)}',
         style: const TextStyle(
           fontWeight: FontWeight.bold,
           fontSize: 18,

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:izc_inventory/dashboard/customers_screen.dart';
 import 'package:izc_inventory/dashboard/dashboard_page.dart';
@@ -9,6 +11,8 @@ import 'package:izc_inventory/dashboard/tracking_page.dart';
 import 'package:izc_inventory/dashboard/user_page.dart';
 import 'package:izc_inventory/widgets/dashboard/sidebar_widget.dart';
 import 'package:izc_inventory/services/session_service.dart';
+import '../services/notification_service.dart';
+import '../models/notification_model.dart';
 
 class DashboardShell extends StatefulWidget {
   const DashboardShell({super.key});
@@ -22,10 +26,19 @@ class _DashboardShellState extends State<DashboardShell> {
   int _selectedIndex = 0;
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
+  // Stream controllers for notifications
+  final StreamController<int> _notificationCountController = StreamController<int>.broadcast();
+  final StreamController<List<NotificationModel>> _notificationsController = StreamController<List<NotificationModel>>.broadcast();
+
+  Timer? _notificationTimer;
+
   // Get user info from session
   String get _userName => SessionService.getFullName() ?? 'User';
   String get _userRole => SessionService.getUserRole() ?? 'user';
   String? get _userImageUrl => SessionService.getImageUrl();
+
+  // Check if user is admin
+  bool get _isAdmin => _userRole.toLowerCase() == 'admin';
 
   // A map to link the sidebar string to the correct index.
   // This makes the code readable and easy to maintain.
@@ -43,8 +56,42 @@ class _DashboardShellState extends State<DashboardShell> {
   @override
   void initState() {
     super.initState();
-    // Set initial page based on role - Sales is accessible to all roles
     _selectedIndex = 1;
+    _loadNotificationData();
+
+    // Poll every 5 seconds for real-time updates
+    _notificationTimer = Timer.periodic(
+      const Duration(seconds: 5),
+          (_) => _loadNotificationData(),
+    );
+  }
+
+  @override
+  void dispose() {
+    _notificationTimer?.cancel();
+    _notificationCountController.close();
+    _notificationsController.close();
+    super.dispose();
+  }
+
+  // Load notification data and update streams
+  Future<void> _loadNotificationData() async {
+    try {
+      // Load count
+      final count = await NotificationService.getNotificationCount();
+      if (!_notificationCountController.isClosed) {
+        _notificationCountController.add(count);
+      }
+
+      // Load notifications list
+      final notifications = await NotificationService.getNotifications();
+      if (!_notificationsController.isClosed) {
+        _notificationsController.add(notifications);
+      }
+    } catch (e) {
+      // Handle error silently or log it
+      debugPrint('Error loading notifications: $e');
+    }
   }
 
   // This is used for the header title and sidebar selection.
@@ -288,6 +335,355 @@ class _DashboardShellState extends State<DashboardShell> {
     );
   }
 
+  // Show notifications dropdown
+  void _showNotificationsDropdown(BuildContext context) {
+    final RenderBox button = context.findRenderObject() as RenderBox;
+    final RenderBox overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    final RelativeRect position = RelativeRect.fromRect(
+      Rect.fromPoints(
+        button.localToGlobal(Offset.zero, ancestor: overlay),
+        button.localToGlobal(button.size.bottomRight(Offset.zero), ancestor: overlay),
+      ),
+      Offset.zero & overlay.size,
+    );
+
+    showMenu(
+      color: Colors.white,
+      context: context,
+      position: position,
+      constraints: const BoxConstraints(
+        maxWidth: 400,
+        maxHeight: 500,
+      ),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      items: [
+        PopupMenuItem(
+          enabled: false,
+          child: Column(
+            children: [
+              // Header
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Notifications',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black,
+                    ),
+                  ),
+                  if (_isAdmin)
+                    TextButton.icon(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        _showCreateNotificationDialog();
+                      },
+                      icon: const Icon(Icons.add, size: 16),
+                      label: const Text('Create'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: const Color(0xFFE86B32),
+                      ),
+                    ),
+                ],
+              ),
+              const Divider(),
+              // Notifications list using StreamBuilder
+              StreamBuilder<List<NotificationModel>>(
+                stream: _notificationsController.stream,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
+                    return const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(20.0),
+                        child: CircularProgressIndicator(),
+                      ),
+                    );
+                  }
+
+                  if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                    return const Padding(
+                      padding: EdgeInsets.all(20.0),
+                      child: Center(
+                        child: Text(
+                          'No notifications',
+                          style: TextStyle(color: Colors.grey),
+                        ),
+                      ),
+                    );
+                  }
+
+                  final notifications = snapshot.data!;
+                  return SizedBox(
+                    width: 400,
+                    height: 400,
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      padding: EdgeInsets.zero,
+                      itemCount: notifications.length,
+                      separatorBuilder: (context, index) => const Divider(height: 1),
+                      itemBuilder: (context, index) {
+                        final notification = notifications[index];
+                        return _buildNotificationItem(notification);
+                      },
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // Build notification item
+  Widget _buildNotificationItem(NotificationModel notification) {
+    final timeAgo = _getTimeAgo(notification.createdAt);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Icon
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: const Color(0xFFE86B32).withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(
+              Icons.notifications,
+              color: Color(0xFFE86B32),
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: 12),
+          // Content
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        notification.title,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                          color: Colors.black,
+                        ),
+                      ),
+                    ),
+                    if (_isAdmin)
+                      IconButton(
+                        icon: const Icon(Icons.delete, size: 18, color: Colors.red),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                        onPressed: () => _deleteNotification(notification.id),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  notification.description,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: Colors.black87,
+                  ),
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  timeAgo,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: Colors.grey,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Get time ago string
+  String _getTimeAgo(DateTime dateTime) {
+    final now = DateTime.now();
+    final difference = now.difference(dateTime);
+
+    if (difference.inDays > 0) {
+      return '${difference.inDays}d ago';
+    } else if (difference.inHours > 0) {
+      return '${difference.inHours}h ago';
+    } else if (difference.inMinutes > 0) {
+      return '${difference.inMinutes}m ago';
+    } else {
+      return 'Just now';
+    }
+  }
+
+  // Show create notification dialog (Admin only)
+  void _showCreateNotificationDialog() {
+    final titleController = TextEditingController();
+    final descriptionController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        title: const Text('Create Notification'),
+        content: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: titleController,
+                decoration: InputDecoration(
+                  labelText: 'Title',
+                  hintText: 'Enter notification title',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  prefixIcon: const Icon(Icons.title),
+                ),
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Please enter a title';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: descriptionController,
+                decoration: InputDecoration(
+                  labelText: 'Description',
+                  hintText: 'Enter notification description',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  prefixIcon: const Icon(Icons.description),
+                ),
+                maxLines: 3,
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Please enter a description';
+                  }
+                  return null;
+                },
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              if (formKey.currentState!.validate()) {
+                final success = await NotificationService.createNotification(
+                  title: titleController.text.trim(),
+                  description: descriptionController.text.trim(),
+                  createdBy: _userName,
+                );
+
+                if (context.mounted) {
+                  Navigator.pop(context);
+
+                  if (success) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Notification created successfully'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                    // Immediately refresh notifications
+                    _loadNotificationData();
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Failed to create notification'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFE86B32),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Create'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Delete notification (Admin only)
+  Future<void> _deleteNotification(String notificationId) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        title: const Text('Delete Notification'),
+        content: const Text('Are you sure you want to delete this notification?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      final success = await NotificationService.deleteNotification(notificationId);
+
+      if (mounted) {
+        if (success) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Notification deleted successfully'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          // Immediately refresh notifications
+          _loadNotificationData();
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Failed to delete notification'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     const double kTabletBreakpoint = 900.0;
@@ -326,8 +722,7 @@ class _DashboardShellState extends State<DashboardShell> {
                 ],
               ),
             );
-          }
-      ),
+          }),
       body: Row(
         children: [
           // Show sidebar permanently on wide screens.
@@ -415,27 +810,100 @@ class _DashboardShellState extends State<DashboardShell> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    IconButton(
-                      icon: Icon(
-                        Icons.notifications_none,
-                        color: Colors.grey,
-                        size: isInternalNarrow ? 20 : 24,
-                      ),
-                      onPressed: () {
-                        // Handle notifications
+                    // Notification icon with badge - using StreamBuilder
+                    Builder(
+                      builder: (notificationContext) {
+                        return StreamBuilder<int>(
+                          stream: _notificationCountController.stream,
+                          initialData: 0,
+                          builder: (context, snapshot) {
+                            final notificationCount = snapshot.data ?? 0;
+
+                            return Stack(
+                              children: [
+                                IconButton(
+                                  icon: Icon(
+                                    Icons.notifications_none,
+                                    color: Colors.grey,
+                                    size: isInternalNarrow ? 20 : 24,
+                                  ),
+                                  onPressed: () {
+                                    _showNotificationsDropdown(notificationContext);
+                                  },
+                                  tooltip: 'Notifications',
+                                ),
+                                if (notificationCount > 0)
+                                  Positioned(
+                                    right: 8,
+                                    top: 8,
+                                    child: Container(
+                                      padding: const EdgeInsets.all(4),
+                                      decoration: const BoxDecoration(
+                                        color: Colors.red,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      constraints: const BoxConstraints(
+                                        minWidth: 16,
+                                        minHeight: 16,
+                                      ),
+                                      child: Text(
+                                        notificationCount > 9 ? '9+' : '$notificationCount',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            );
+                          },
+                        );
                       },
-                      tooltip: 'Notifications',
                     ),
-                    if (!isInternalNarrow)
-                      const VerticalDivider(
-                        thickness: 1,
-                        color: Colors.grey,
-                        indent: 8,
-                        endIndent: 8,
-                        width: 32,
-                      )
-                    else
-                      const SizedBox(width: 12),
+                    // User Profile Image
+                    if (!isInternalVeryNarrow)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        child: _userImageUrl != null && _userImageUrl!.isNotEmpty
+                            ? ClipRRect(
+                          borderRadius: BorderRadius.circular(20),
+                          child: Image.network(
+                            _userImageUrl!,
+                            width: isInternalNarrow ? 32 : 40,
+                            height: isInternalNarrow ? 32 : 40,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) {
+                              return CircleAvatar(
+                                radius: isInternalNarrow ? 16 : 20,
+                                backgroundColor: const Color(0xFFE86B32).withOpacity(0.1),
+                                child: Text(
+                                  _userName.isNotEmpty ? _userName[0].toUpperCase() : 'U',
+                                  style: TextStyle(
+                                    color: const Color(0xFFE86B32),
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: isInternalNarrow ? 14 : 16,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        )
+                            : CircleAvatar(
+                          radius: isInternalNarrow ? 16 : 20,
+                          backgroundColor: const Color(0xFFE86B32).withOpacity(0.1),
+                          child: Text(
+                            _userName.isNotEmpty ? _userName[0].toUpperCase() : 'U',
+                            style: TextStyle(
+                              color: const Color(0xFFE86B32),
+                              fontWeight: FontWeight.bold,
+                              fontSize: isInternalNarrow ? 14 : 16,
+                            ),
+                          ),
+                        ),
+                      ),
                     if (!isInternalVeryNarrow) ...[
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.end,

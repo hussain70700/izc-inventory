@@ -653,7 +653,7 @@ class _TrackingPageState extends State<TrackingPage> {
                                       ),
                                     ),
                                     Text(
-                                      '\$${item['price']?.toString() ?? '0'}',
+                                      'Rs ${item['price']?.toString() ?? '0'}',
                                       style: const TextStyle(
                                         fontWeight: FontWeight.bold,
                                         fontSize: 14,
@@ -691,7 +691,7 @@ class _TrackingPageState extends State<TrackingPage> {
                               ),
                             ),
                             Text(
-                              '\$${total.toStringAsFixed(2)}',
+                              'Rs ${total.toStringAsFixed(2)}',
                               style: const TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
@@ -713,7 +713,7 @@ class _TrackingPageState extends State<TrackingPage> {
                                 ),
                               ),
                               Text(
-                                '-\$${advancePayment.toStringAsFixed(2)}',
+                                '-Rs ${advancePayment.toStringAsFixed(2)}',
                                 style: const TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.w500,
@@ -734,7 +734,7 @@ class _TrackingPageState extends State<TrackingPage> {
                                 ),
                               ),
                               Text(
-                                '\$${remaining.toStringAsFixed(2)}',
+                                'Rs ${remaining.toStringAsFixed(2)}',
                                 style: const TextStyle(
                                   fontSize: 20,
                                   fontWeight: FontWeight.bold,
@@ -1094,7 +1094,7 @@ class _TrackingPageState extends State<TrackingPage> {
                           ),
                           DataCell(
                             Text(
-                              '\$${total.toStringAsFixed(2)}',
+                              'Rs ${total.toStringAsFixed(2)}',
                               style: const TextStyle(
                                 color: Colors.black,
                                 fontWeight: FontWeight.bold,
@@ -1104,7 +1104,7 @@ class _TrackingPageState extends State<TrackingPage> {
                           // ✅ ADVANCE PAYMENT COLUMN
                           DataCell(
                             Text(
-                              advancePayment > 0 ? '\$${advancePayment.toStringAsFixed(2)}' : '-',
+                              advancePayment > 0 ? 'Rs ${advancePayment.toStringAsFixed(2)}' : '-',
                               style: TextStyle(
                                 color: advancePayment > 0 ? Colors.green.shade700 : Colors.grey,
                                 fontWeight: advancePayment > 0 ? FontWeight.bold : FontWeight.normal,
@@ -1115,7 +1115,7 @@ class _TrackingPageState extends State<TrackingPage> {
                           // ✅ REMAINING COLUMN
                           DataCell(
                             Text(
-                              '\$${remaining.toStringAsFixed(2)}',
+                              'Rs ${remaining.toStringAsFixed(2)}',
                               style: const TextStyle(
                                 color: Color(0xffFE691E),
                                 fontWeight: FontWeight.bold,

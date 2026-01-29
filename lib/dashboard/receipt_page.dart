@@ -32,6 +32,12 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
   bool _isLoading = true;
   String? _error;
   String _cashierName = 'Admin User';
+
+  // ✅ FIXED: Updated isReturn getter to check status as well
+  bool get isReturn =>
+      _sale?.paymentMethod == 'Return' ||
+          (_sale?.notes?.contains('RETURN') ?? false);
+
   @override
   void initState() {
     super.initState();
@@ -65,7 +71,7 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
       setState(() {
         _sale = sale;
         _items = items;
-        _cashierName = userName; // ✅ SET CASHIER NAME
+        _cashierName = userName;
         _isLoading = false;
       });
     } catch (e, stackTrace) {
@@ -121,13 +127,35 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
               ),
               pw.SizedBox(height: 16),
 
+              // ✅ NEW: Return banner for PDF
+              if (isReturn)
+                pw.Container(
+                  margin: const pw.EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding: const pw.EdgeInsets.all(12),
+                  decoration: pw.BoxDecoration(
+                    color: PdfColors.red50,
+                    border: pw.Border.all(color: PdfColors.red, width: 2),
+                    borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8)),
+                  ),
+                  child: pw.Center(
+                    child: pw.Text(
+                      '⚠️ RETURN / CREDIT NOTE',
+                      style: pw.TextStyle(
+                        color: PdfColors.red,
+                        fontWeight: pw.FontWeight.bold,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
+                ),
+
               // Invoice Info
               pw.Padding(
                 padding: const pw.EdgeInsets.symmetric(horizontal: 16),
                 child: pw.Column(
                   children: [
                     _pdfRow('INVOICE NO:', '#${_sale!.id?.substring(0, 14).toUpperCase() ?? 'N/A'}'),
-                    _pdfRow('DATE:', dateFormat.format(_sale!.saleDate)), // ✅ Updated format
+                    _pdfRow('DATE:', dateFormat.format(_sale!.saleDate)),
                     _pdfRow('CASHIER:', _cashierName),
                     _pdfRow('CUSTOMER:', customerName),
                   ],
@@ -143,7 +171,7 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
                     pw.Text(
-                      'ITEMS PURCHASED',
+                      isReturn ? 'ITEMS RETURNED' : 'ITEMS PURCHASED',
                       style: pw.TextStyle(
                         fontWeight: pw.FontWeight.bold,
                         fontSize: 12,
@@ -166,7 +194,7 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
                               ),
                             ),
                             pw.Text(
-                              '\$${item.total.toStringAsFixed(2)}',
+                              'Rs ${item.total.abs().toStringAsFixed(2)}', // ✅ Use abs()
                               style: pw.TextStyle(
                                 fontWeight: pw.FontWeight.bold,
                                 fontSize: 11,
@@ -179,7 +207,7 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
                           style: const pw.TextStyle(fontSize: 9),
                         ),
                         pw.Text(
-                          '${item.quantity} x \$${item.price.toStringAsFixed(2)}',
+                          '${item.quantity} x Rs ${item.price.abs().toStringAsFixed(2)}', // ✅ Use abs()
                           style: const pw.TextStyle(fontSize: 9),
                         ),
                         pw.SizedBox(height: 8),
@@ -195,27 +223,34 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
                 padding: const pw.EdgeInsets.symmetric(horizontal: 16),
                 child: pw.Column(
                   children: [
-                    _pdfRow('SUBTOTAL:', '\$${_sale!.subtotal.toStringAsFixed(2)}'),
+                    // ✅ FIXED: Use proper labels and abs() for returns
+                    _pdfRow(
+                      isReturn ? 'RETURN SUBTOTAL:' : 'SUBTOTAL:',
+                      'Rs ${_sale!.subtotal.abs().toStringAsFixed(2)}',
+                    ),
                     if (_sale!.discount > 0)
-                      _pdfRow('DISCOUNT:', '-\$${_sale!.discount.toStringAsFixed(2)}'),
-                    _pdfRow('TAX (8.5%):', '\$${_sale!.tax.toStringAsFixed(2)}'),
+                      _pdfRow('DISCOUNT:', '-Rs ${_sale!.discount.toStringAsFixed(2)}'),
+                    _pdfRow(
+                      isReturn ? 'RETURN TAX (8.5%):' : 'TAX (8.5%):',
+                      'Rs ${_sale!.tax.abs().toStringAsFixed(2)}',
+                    ),
                     pw.SizedBox(height: 8),
                     pw.Divider(thickness: 1),
                     pw.SizedBox(height: 8),
                     _pdfRow(
-                      'TOTAL PAYABLE:',
-                      '\$${totalAmount.toStringAsFixed(2)}',
+                      isReturn ? 'TOTAL REFUND:' : 'TOTAL PAYABLE:',
+                      'Rs ${totalAmount.abs().toStringAsFixed(2)}',
                       bold: true,
                     ),
 
-                    // ✅ ADVANCE PAYMENT SECTION (exactly matching sales page format)
-                    if (advancePayment > 0) ...[
+                    // ✅ ADVANCE PAYMENT SECTION (only for non-returns)
+                    if (!isReturn && advancePayment > 0) ...[
                       pw.SizedBox(height: 8),
-                      _pdfRow('ADVANCE PAYMENT:', '-\$${advancePayment.toStringAsFixed(2)}'),
+                      _pdfRow('ADVANCE PAYMENT:', '-Rs ${advancePayment.toStringAsFixed(2)}'),
                       pw.Divider(thickness: 1),
                       _pdfRow(
                         'COD AMOUNT:',
-                        '\$${remainingPayment.toStringAsFixed(2)}',
+                        'Rs ${remainingPayment.toStringAsFixed(2)}',
                         bold: true,
                       ),
                     ],
@@ -263,7 +298,7 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
                 child: pw.Column(
                   children: [
                     pw.Text(
-                      'THANK YOU FOR SHOPPING!',
+                      isReturn ? 'ITEMS RETURNED - STOCK RESTORED' : 'THANK YOU FOR SHOPPING!',
                       textAlign: pw.TextAlign.center,
                       style: pw.TextStyle(
                         fontWeight: pw.FontWeight.bold,
@@ -354,8 +389,8 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
     return Scaffold(
       backgroundColor: Colors.grey.shade300,
       appBar: AppBar(
-        title: const Text('Receipt'),
-        backgroundColor: const Color(0xffFE691E),
+        title: Text(isReturn ? 'Return Receipt' : 'Receipt'), // ✅ Updated title
+        backgroundColor: isReturn ? Colors.red : const Color(0xffFE691E), // ✅ Red for returns
         foregroundColor: Colors.white,
         actions: [
           IconButton(
@@ -414,6 +449,8 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
             child: Column(
               children: [
                 _header(),
+                // ✅ NEW: Return banner
+                if (isReturn) _returnBanner(),
                 _infoSection(),
                 _itemsSection(),
                 _totalSection(),
@@ -447,10 +484,37 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
     );
   }
 
+  // ✅ NEW: Return banner widget
+  Widget _returnBanner() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.red.shade50,
+        border: Border.all(color: Colors.red, width: 2),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: const Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.keyboard_return, color: Colors.red, size: 24),
+          SizedBox(width: 8),
+          Text(
+            'RETURN / CREDIT NOTE',
+            style: TextStyle(
+              color: Colors.red,
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _infoSection() {
     if (_sale == null || _items.isEmpty) return const SizedBox.shrink();
 
-    // ✅ NEW FORMAT: 25 Jan 2025 07:54 PM
     final dateFormat = DateFormat('dd MMM yyyy hh:mm a');
     final customerName = _items.first.customerName ?? 'Guest';
 
@@ -472,16 +536,16 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
     return _section(
       Column(
         children: [
-          const Text(
-            'ITEMS PURCHASED',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+          Text(
+            isReturn ? 'ITEMS RETURNED' : 'ITEMS PURCHASED', // ✅ Updated label
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
           ),
           const SizedBox(height: 10),
           ..._items.map((item) => _item(
             item.productName,
             'SKU: ${item.sku}',
-            '${item.quantity} x \$${item.price.toStringAsFixed(2)}',
-            '\$${item.total.toStringAsFixed(2)}',
+            '${item.quantity} x Rs ${item.price.abs().toStringAsFixed(2)}', // ✅ Use abs()
+            'Rs ${item.total.abs().toStringAsFixed(2)}', // ✅ Use abs()
           )),
         ],
       ),
@@ -499,14 +563,21 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
     return _section(
       Column(
         children: [
-          _row('SUBTOTAL:', '\$${_sale!.subtotal.toStringAsFixed(2)}'),
+          // ✅ FIXED: Use proper labels and abs() for returns
+          _row(
+            isReturn ? 'RETURN SUBTOTAL:' : 'SUBTOTAL:',
+            'Rs ${_sale!.subtotal.abs().toStringAsFixed(2)}',
+          ),
           if (_sale!.discount > 0)
             _row(
               'DISCOUNT:',
-              '-\$${_sale!.discount.toStringAsFixed(2)}',
+              '-Rs ${_sale!.discount.toStringAsFixed(2)}',
               valueColor: const Color(0xffFE691E),
             ),
-          _row('TAX (8.5%):', '\$${_sale!.tax.toStringAsFixed(2)}'),
+          _row(
+            isReturn ? 'RETURN TAX (8.5%):' : 'TAX (8.5%):',
+            'Rs ${_sale!.tax.abs().toStringAsFixed(2)}',
+          ),
           const SizedBox(height: 8),
           Container(
             height: 1,
@@ -514,18 +585,19 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
           ),
           const SizedBox(height: 8),
           _row(
-            'TOTAL PAYABLE:',
-            '\$${totalAmount.toStringAsFixed(2)}',
+            isReturn ? 'TOTAL REFUND:' : 'TOTAL PAYABLE:',
+            'Rs ${totalAmount.abs().toStringAsFixed(2)}',
             bold: true,
+            valueColor: isReturn ? Colors.red : Colors.black,
             fontSize: 16,
           ),
 
-          // ✅ ADVANCE PAYMENT SECTION (exactly matching sales page format)
-          if (advancePayment > 0) ...[
+          // ✅ ADVANCE PAYMENT SECTION (only for non-returns with COD)
+          if (!isReturn && advancePayment > 0) ...[
             const SizedBox(height: 8),
             _row(
               'ADVANCE PAYMENT:',
-              '-\$${advancePayment.toStringAsFixed(2)}',
+              '-Rs ${advancePayment.toStringAsFixed(2)}',
               valueColor: Colors.green.shade700,
               fontSize: 14,
             ),
@@ -536,7 +608,7 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
             ),
             _row(
               'COD AMOUNT:',
-              '\$${remainingPayment.toStringAsFixed(2)}',
+              'Rs ${remainingPayment.toStringAsFixed(2)}',
               bold: true,
               valueColor: const Color(0xffFE691E),
               fontSize: 16,
@@ -553,8 +625,9 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
                 width: double.infinity,
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: Colors.grey.shade100,
+                  color: isReturn ? Colors.red.shade50 : Colors.grey.shade100, // ✅ Red background for returns
                   borderRadius: BorderRadius.circular(4),
+                  border: isReturn ? Border.all(color: Colors.red.shade200) : null, // ✅ Red border for returns
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -585,9 +658,9 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
-          const Text(
-            'THANK YOU FOR SHOPPING!',
-            style: TextStyle(
+          Text(
+            isReturn ? 'ITEMS RETURNED - STOCK RESTORED' : 'THANK YOU FOR SHOPPING!', // ✅ Updated message
+            style: const TextStyle(
               fontWeight: FontWeight.bold,
               fontSize: 14,
             ),

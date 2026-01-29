@@ -130,6 +130,10 @@ class _DashboardPageState extends State<DashboardPage> {
 
           case 'Returned':
             returnedCount++;
+            totalSalesAmount += amount; // Adds negative = subtraction
+            paymentProcessed += amount;
+            instoreSalesAmount += amount;
+            cashPayment += amount;
             // ❌ COD NOT counted here - order is returned
             break;
 
@@ -371,6 +375,7 @@ class _DashboardPageState extends State<DashboardPage> {
       await downloadFile(bytes, fileName);
 
       if (mounted) {
+
         _showSuccess('Dashboard report exported: $fileName');
       }
     } catch (e, stackTrace) {

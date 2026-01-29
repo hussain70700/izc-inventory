@@ -278,15 +278,13 @@ class _ReportsPageState extends State<ReportsPage> {
             pw.Row(
               mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
               children: [
-                _buildPdfStatCard('Online Sales', '\$${_onlineSales.toStringAsFixed(2)}', font, boldFont),
-                _buildPdfStatCard('In-Store Sales', '\$${_instoreSales.toStringAsFixed(2)}', font, boldFont),
-                _buildPdfStatCard('Total Sales', '\$${_totalSales.toStringAsFixed(2)}', font, boldFont),
+                _buildPdfStatCard('Online Sales', 'Rs. ${_onlineSales.toStringAsFixed(2)}', font, boldFont),
+                _buildPdfStatCard('In-Store Sales', 'Rs. ${_instoreSales.toStringAsFixed(2)}', font, boldFont),
+                _buildPdfStatCard('Total Sales', 'Rs. ${_totalSales.toStringAsFixed(2)}', font, boldFont),
                 _buildPdfStatCard('Orders', _ordersCount.toString(), font, boldFont),
               ],
             ),
-// Remove the second pw.Row that had Completed and Returned stats
             pw.SizedBox(height: 10),
-
             pw.SizedBox(height: 30),
             if (_bestSellingProducts.isNotEmpty) ...[
               pw.Text(
@@ -307,7 +305,7 @@ class _ReportsPageState extends State<ReportsPage> {
                     product['product_name'],
                     product['product_sku'],
                     product['total_quantity'].toString(),
-                    '\$${product['total_revenue'].toStringAsFixed(2)}',
+                    'Rs. ${product['total_revenue'].toStringAsFixed(2)}',
                   ];
                 }).toList(),
               ),
@@ -332,8 +330,8 @@ class _ReportsPageState extends State<ReportsPage> {
                   DateFormat('MMM dd, yyyy').format(date),
                   customer['name'],
                   sale['payment_method'],
-                  '\$${sale['total'].toStringAsFixed(2)}',
-                  status == 'Returned' ? 'Returned' : '', // Only show if returned
+                  'Rs. ${sale['total'].toStringAsFixed(2)}',
+                  status == 'Returned' ? 'Returned' : '',
                 ];
               }).toList(),
             ),
@@ -494,6 +492,295 @@ class _ReportsPageState extends State<ReportsPage> {
             label: const Text('PDF'),
           ),
         ],
+      ),
+    );
+  }
+
+  // ✅ NEW: Show All Sales Bottom Sheet
+  void _showAllSalesBottomSheet() {
+    // Create a separate controller for the bottom sheet search
+    final bottomSheetSearchController = TextEditingController();
+    List<Map<String, dynamic>> bottomSheetFilteredSales = List.from(_salesHistory);
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setBottomSheetState) {
+          void filterBottomSheetSales(String query) {
+            if (query.isEmpty) {
+              setBottomSheetState(() {
+                bottomSheetFilteredSales = _salesHistory;
+              });
+              return;
+            }
+
+            setBottomSheetState(() {
+              bottomSheetFilteredSales = _salesHistory.where((sale) {
+                final customer = sale['customers'];
+                final customerName = customer['name']?.toString().toLowerCase() ?? '';
+                final paymentMethod = sale['payment_method']?.toString().toLowerCase() ?? '';
+                final total = sale['total']?.toString().toLowerCase() ?? '';
+                final invoiceId = sale['id']?.toString().toLowerCase() ?? '';
+
+                return customerName.contains(query) ||
+                    paymentMethod.contains(query) ||
+                    total.contains(query) ||
+                    invoiceId.contains(query);
+              }).toList();
+            });
+          }
+
+          return DraggableScrollableSheet(
+            initialChildSize: 0.9,
+            minChildSize: 0.5,
+            maxChildSize: 0.95,
+            builder: (context, scrollController) => Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(20),
+                  topRight: Radius.circular(20),
+                ),
+              ),
+              child: Column(
+                children: [
+                  // Handle bar
+                  Container(
+                    margin: const EdgeInsets.only(top: 12, bottom: 8),
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[300],
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+
+                  // Header
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'All Sales',
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close),
+                          onPressed: () => Navigator.pop(context),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Search Bar
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: TextField(
+                      controller: bottomSheetSearchController,
+                      onChanged: filterBottomSheetSales,
+                      decoration: InputDecoration(
+                        hintText: 'Search by invoice, customer, payment method...',
+                        prefixIcon: const Icon(Icons.search, size: 20),
+                        suffixIcon: bottomSheetSearchController.text.isNotEmpty
+                            ? IconButton(
+                          icon: const Icon(Icons.clear, size: 20),
+                          onPressed: () {
+                            bottomSheetSearchController.clear();
+                            filterBottomSheetSales('');
+                          },
+                        )
+                            : null,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: Colors.grey.shade300),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: Colors.grey.shade300),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: Color(0xFFE86B32), width: 2),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        isDense: true,
+                        filled: true,
+                        fillColor: Colors.grey[50],
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 8),
+
+                  // Results count
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Row(
+                      children: [
+                        Text(
+                          '${bottomSheetFilteredSales.length} ${bottomSheetFilteredSales.length == 1 ? 'sale' : 'sales'} found',
+                          style: TextStyle(
+                            color: Colors.grey[600],
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const Divider(height: 1),
+
+                  // Sales List
+                  Expanded(
+                    child: bottomSheetFilteredSales.isEmpty
+                        ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.search_off,
+                            size: 64,
+                            color: Colors.grey[400],
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'No sales found',
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                        : ListView.separated(
+                      controller: scrollController,
+                      itemCount: bottomSheetFilteredSales.length,
+                      separatorBuilder: (context, index) => const Divider(height: 1),
+                      itemBuilder: (context, index) {
+                        final sale = bottomSheetFilteredSales[index];
+                        final customer = sale['customers'];
+                        final date = DateTime.parse(sale['sale_date']);
+                        final status = sale['status'] ?? 'Completed';
+                        final isReturned = status == 'Returned';
+
+                        return ListTile(
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 8,
+                          ),
+                          leading: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE86B32).withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                color: const Color(0xFFE86B32).withOpacity(0.3),
+                              ),
+                            ),
+                            child: Text(
+                              _getInvoiceDisplay(sale['id']),
+                              style: const TextStyle(
+                                color: Color(0xFFE86B32),
+                                fontWeight: FontWeight.bold,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ),
+                          title: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  customer['name'],
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                              if (isReturned)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.red.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: Colors.red.withOpacity(0.3),
+                                    ),
+                                  ),
+                                  child: const Text(
+                                    'Returned',
+                                    style: TextStyle(
+                                      color: Colors.red,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const SizedBox(height: 4),
+                              Text(
+                                DateFormat('MMM dd, yyyy - hh:mm a').format(date),
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey[600],
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.payment,
+                                    size: 14,
+                                    color: Colors.grey[600],
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    sale['payment_method'],
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey[600],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                          trailing: Text(
+                            'Rs. ${sale['total'].toStringAsFixed(2)}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                              color: Color(0xFFE86B32),
+                            ),
+                          ),
+                          isThreeLine: true,
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -668,7 +955,7 @@ class _ReportsPageState extends State<ReportsPage> {
                                       style: const TextStyle(fontWeight: FontWeight.bold),
                                     ),
                                     Text(
-                                      '\$${product['total_revenue'].toStringAsFixed(2)}',
+                                      'Rs. ${product['total_revenue'].toStringAsFixed(2)}',
                                       style: const TextStyle(fontSize: 12, color: Colors.grey),
                                     ),
                                   ],
@@ -692,6 +979,7 @@ class _ReportsPageState extends State<ReportsPage> {
                         Padding(
                           padding: const EdgeInsets.all(16),
                           child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               const Text(
                                 'Recent Sales',
@@ -700,34 +988,13 @@ class _ReportsPageState extends State<ReportsPage> {
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                child: TextField(
-                                  controller: _searchController,
-                                  decoration: InputDecoration(
-                                    hintText: 'Search by invoice, customer, payment method...',
-                                    prefixIcon: const Icon(Icons.search, size: 20),
-                                    suffixIcon: _searchController.text.isNotEmpty
-                                        ? IconButton(
-                                      icon: const Icon(Icons.clear, size: 20),
-                                      onPressed: () => _searchController.clear(),
-                                    )
-                                        : null,
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                      borderSide: BorderSide(color: Colors.grey.shade300),
-                                    ),
-                                    enabledBorder: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                      borderSide: BorderSide(color: Colors.grey.shade300),
-                                    ),
-                                    focusedBorder: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                      borderSide: const BorderSide(color: Color(0xFFE86B32), width: 2),
-                                    ),
-                                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                    isDense: true,
-                                  ),
+                              // ✅ NEW: Show All Button
+                              TextButton.icon(
+                                onPressed: _showAllSalesBottomSheet,
+                                icon: const Icon(Icons.open_in_full, size: 16),
+                                label: const Text('Show All'),
+                                style: TextButton.styleFrom(
+                                  foregroundColor: const Color(0xFFE86B32),
                                 ),
                               ),
                             ],
@@ -748,15 +1015,13 @@ class _ReportsPageState extends State<ReportsPage> {
                           ListView.separated(
                             shrinkWrap: true,
                             physics: const NeverScrollableScrollPhysics(),
-                            itemCount: _filteredSalesHistory.take(20).length,
+                            itemCount: _filteredSalesHistory.take(10).length,
                             separatorBuilder: (context, index) => const Divider(height: 1),
                             itemBuilder: (context, index) {
                               final sale = _filteredSalesHistory[index];
                               final customer = sale['customers'];
                               final date = DateTime.parse(sale['sale_date']);
                               final status = sale['status'] ?? 'Completed';
-
-                              // Only show status badge for Returned orders
                               final isReturned = status == 'Returned';
 
                               return ListTile(
@@ -805,7 +1070,7 @@ class _ReportsPageState extends State<ReportsPage> {
                                       'Payment: ${sale['payment_method']}',
                                 ),
                                 trailing: Text(
-                                  '\$${sale['total'].toStringAsFixed(2)}',
+                                  'Rs. ${sale['total'].toStringAsFixed(2)}',
                                   style: const TextStyle(
                                     fontWeight: FontWeight.bold,
                                     fontSize: 16,
@@ -838,19 +1103,19 @@ class _ReportsPageState extends State<ReportsPage> {
       children: [
         _StatCard(
           title: 'Online Sales',
-          value: '\$${_onlineSales.toStringAsFixed(2)}',
+          value: 'Rs. ${_onlineSales.toStringAsFixed(2)}',
           icon: Icons.shopping_cart,
           color: Colors.blue,
         ),
         _StatCard(
           title: 'In-Store Sales',
-          value: '\$${_instoreSales.toStringAsFixed(2)}',
+          value: 'Rs. ${_instoreSales.toStringAsFixed(2)}',
           icon: Icons.store,
           color: Colors.green,
         ),
         _StatCard(
           title: 'Total Sales',
-          value: '\$${_totalSales.toStringAsFixed(2)}',
+          value: 'Rs. ${_totalSales.toStringAsFixed(2)}',
           icon: Icons.attach_money,
           color: const Color(0xFFE86B32),
         ),
@@ -943,7 +1208,7 @@ class _ReportsPageState extends State<ReportsPage> {
                           reservedSize: 45,
                           getTitlesWidget: (value, meta) {
                             return Text(
-                              '\$${value.toInt()}',
+                              'Rs. ${value.toInt()}',
                               style: const TextStyle(
                                 color: Colors.grey,
                                 fontSize: 10,
@@ -1018,7 +1283,7 @@ class _ReportsPageState extends State<ReportsPage> {
                         getTooltipItems: (List<LineBarSpot> touchedSpots) {
                           return touchedSpots.map((LineBarSpot touchedSpot) {
                             return LineTooltipItem(
-                              '${_chartData[touchedSpot.x.toInt()].period}\n\$${touchedSpot.y.toStringAsFixed(2)}',
+                              '${_chartData[touchedSpot.x.toInt()].period}\nRs. ${touchedSpot.y.toStringAsFixed(2)}',
                               const TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.bold,

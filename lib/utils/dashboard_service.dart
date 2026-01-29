@@ -56,14 +56,14 @@ class DashboardService {
       delivered: "1,105",
       shipperAdvice: "24",
       returned: "45",
-      paymentProcessed: "\$45,280.00",
-      paymentTransferred: "\$38,150.00",
-      toBeTransferred: "\$7,130.00",
+      paymentProcessed: "Rs 45,280.00",
+      paymentTransferred: "Rs 38,150.00",
+      toBeTransferred: "Rs 7,130.00",
       deliveredPercentage: 0.94,
       returnRatio: 0.036,
-      totalSales: "\$83,430.00",
-      onlineSales: "\$55,120.00",
-      offlineSales: "\$28,310.00",
+      totalSales: "Rs 83,430.00",
+      onlineSales: "Rs 55,120.00",
+      offlineSales: "Rs 28,310.00",
       codAmountBooked: 12400.00, // ✅ NEW
       codOrdersCount: 45, // ✅ NEW
       codPercentage: 0.65, // ✅ NEW

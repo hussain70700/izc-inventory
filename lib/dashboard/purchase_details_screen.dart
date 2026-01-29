@@ -1,5 +1,5 @@
 // ============================================
-// PURCHASE DETAILS SCREEN - FIXED
+// PURCHASE DETAILS SCREEN - FIXED FOR RETURNS
 // lib/screens/purchase_details_screen.dart
 // ============================================
 
@@ -24,6 +24,11 @@ class _PurchaseDetailsScreenState extends State<PurchaseDetailsScreen> {
   Sale? _sale;
   List<DetailedSaleItem> _items = [];
   bool _isLoading = true;
+
+  // ✅ NEW: Add isReturn getter
+  bool get isReturn =>
+      _sale?.paymentMethod == 'Return' ||
+          (_sale?.notes?.contains('RETURN') ?? false);
 
   @override
   void initState() {
@@ -73,15 +78,18 @@ class _PurchaseDetailsScreenState extends State<PurchaseDetailsScreen> {
         return Scaffold(
           backgroundColor: const Color(0xffF6F7FB),
           appBar: AppBar(
-            backgroundColor: Colors.white,
+            backgroundColor: isReturn ? Colors.red : Colors.white, // ✅ Red for returns
             elevation: 2,
             leading: IconButton(
-              icon: const Icon(Icons.arrow_back, color: Colors.black),
+              icon: Icon(Icons.arrow_back, color: isReturn ? Colors.white : Colors.black), // ✅ White icon for red bg
               onPressed: () => Navigator.pop(context),
             ),
-            title: const Text(
-              'Purchase Details',
-              style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+            title: Text(
+              isReturn ? 'Return Details' : 'Purchase Details', // ✅ Updated title
+              style: TextStyle(
+                color: isReturn ? Colors.white : Colors.black,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ),
           body: _isLoading
@@ -100,7 +108,7 @@ class _PurchaseDetailsScreenState extends State<PurchaseDetailsScreen> {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  'Purchase not found',
+                  isReturn ? 'Return not found' : 'Purchase not found',
                   style: TextStyle(
                     color: Colors.grey.shade600,
                     fontSize: 16,
@@ -117,6 +125,10 @@ class _PurchaseDetailsScreenState extends State<PurchaseDetailsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // ✅ NEW: Return banner
+                  if (isReturn) _buildReturnBanner(),
+                  if (isReturn) SizedBox(height: isMobile ? 12 : 16),
+
                   // Sale Info Card
                   _buildSaleInfoCard(isMobile),
                   SizedBox(height: isMobile ? 16 : 24),
@@ -127,6 +139,10 @@ class _PurchaseDetailsScreenState extends State<PurchaseDetailsScreen> {
 
                   // Summary Card
                   _buildSummaryCard(isMobile),
+
+                  // ✅ NEW: View Receipt button
+                  SizedBox(height: isMobile ? 16 : 24),
+                  _buildViewReceiptButton(),
                 ],
               ),
             ),
@@ -136,8 +152,48 @@ class _PurchaseDetailsScreenState extends State<PurchaseDetailsScreen> {
     );
   }
 
+  // ✅ NEW: Return banner widget
+  Widget _buildReturnBanner() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.red.shade50,
+        border: Border.all(color: Colors.red, width: 2),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: const Row(
+        children: [
+          Icon(Icons.keyboard_return, color: Colors.red, size: 28),
+          SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'RETURN / CREDIT NOTE',
+                  style: TextStyle(
+                    color: Colors.red,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  'Items returned and stock restored',
+                  style: TextStyle(
+                    color: Colors.red,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildSaleInfoCard(bool isMobile) {
-    // FIX: saleDate is already a DateTime, no need to parse it
     final saleDate = _sale!.saleDate;
 
     return Container(
@@ -160,9 +216,9 @@ class _PurchaseDetailsScreenState extends State<PurchaseDetailsScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                'Order Information',
-                style: TextStyle(
+              Text(
+                isReturn ? 'Return Information' : 'Order Information', // ✅ Updated label
+                style: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
                 ),
@@ -170,13 +226,15 @@ class _PurchaseDetailsScreenState extends State<PurchaseDetailsScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
-                  color: const Color(0xffFE691E).withOpacity(0.1),
+                  color: isReturn
+                      ? Colors.red.withOpacity(0.1) // ✅ Red for returns
+                      : const Color(0xffFE691E).withOpacity(0.1),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
                   _sale!.paymentMethod,
-                  style: const TextStyle(
-                    color: Color(0xffFE691E),
+                  style: TextStyle(
+                    color: isReturn ? Colors.red : const Color(0xffFE691E), // ✅ Red for returns
                     fontWeight: FontWeight.bold,
                     fontSize: 12,
                   ),
@@ -185,11 +243,19 @@ class _PurchaseDetailsScreenState extends State<PurchaseDetailsScreen> {
             ],
           ),
           const Divider(height: 24),
-          _buildInfoRow(Icons.tag, 'Order ID', _sale!.id!.substring(0, 8).toUpperCase()),
+          _buildInfoRow(
+            Icons.tag,
+            isReturn ? 'Return ID' : 'Order ID', // ✅ Updated label
+            _sale!.id!.toUpperCase(),
+          ),
           const SizedBox(height: 12),
           _buildInfoRow(Icons.calendar_today, 'Date', _formatDateTime(saleDate)),
           const SizedBox(height: 12),
-          _buildInfoRow(Icons.shopping_bag, 'Items', '${_items.length} item${_items.length != 1 ? 's' : ''}'),
+          _buildInfoRow(
+            Icons.shopping_bag,
+            'Items',
+            '${_items.length} item${_items.length != 1 ? 's' : ''}',
+          ),
           if (_sale!.notes != null && _sale!.notes!.isNotEmpty) ...[
             const SizedBox(height: 12),
             _buildInfoRow(Icons.note, 'Notes', _sale!.notes!),
@@ -241,11 +307,11 @@ class _PurchaseDetailsScreenState extends State<PurchaseDetailsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Padding(
-            padding: EdgeInsets.all(20.0),
+          Padding(
+            padding: const EdgeInsets.all(20.0),
             child: Text(
-              'Items Purchased',
-              style: TextStyle(
+              isReturn ? 'Items Returned' : 'Items Purchased', // ✅ Updated label
+              style: const TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
               ),
@@ -328,18 +394,18 @@ class _PurchaseDetailsScreenState extends State<PurchaseDetailsScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      '\$${item.price.toStringAsFixed(2)} × ${item.quantity}',
+                      'Rs ${item.price.abs().toStringAsFixed(2)} × ${item.quantity}', // ✅ Use abs()
                       style: TextStyle(
                         color: Colors.grey.shade700,
                         fontSize: 14,
                       ),
                     ),
                     Text(
-                      '\$${item.total.toStringAsFixed(2)}',
-                      style: const TextStyle(
+                      'Rs ${item.total.abs().toStringAsFixed(2)}', // ✅ Use abs()
+                      style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 16,
-                        color: Color(0xffFE691E),
+                        color: isReturn ? Colors.red : const Color(0xffFE691E), // ✅ Red for returns
                       ),
                     ),
                   ],
@@ -370,23 +436,39 @@ class _PurchaseDetailsScreenState extends State<PurchaseDetailsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Payment Summary',
-            style: TextStyle(
+          Text(
+            isReturn ? 'Return Summary' : 'Payment Summary', // ✅ Updated label
+            style: const TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.bold,
             ),
           ),
           const SizedBox(height: 16),
-          _buildSummaryRow('Subtotal', _sale!.subtotal),
+          _buildSummaryRow(
+            isReturn ? 'Return Subtotal' : 'Subtotal', // ✅ Updated label
+            _sale!.subtotal.abs(), // ✅ Use abs()
+          ),
           if (_sale!.discount > 0) ...[
             const SizedBox(height: 8),
-            _buildSummaryRow('Discount', -_sale!.discount, color: const Color(0xffFE691E)),
+            _buildSummaryRow(
+              'Discount',
+              -_sale!.discount,
+              color: const Color(0xffFE691E),
+            ),
           ],
           const SizedBox(height: 8),
-          _buildSummaryRow('Tax', _sale!.tax),
+          _buildSummaryRow(
+            isReturn ? 'Return Tax' : 'Tax', // ✅ Updated label
+            _sale!.tax.abs(), // ✅ Use abs()
+          ),
           const Divider(height: 24),
-          _buildSummaryRow('Total', _sale!.total, bold: true, large: true),
+          _buildSummaryRow(
+            isReturn ? 'Total Refund' : 'Total', // ✅ Updated label
+            _sale!.total.abs(), // ✅ Use abs()
+            bold: true,
+            large: true,
+            color: isReturn ? Colors.red : null, // ✅ Red for returns
+          ),
         ],
       ),
     );
@@ -406,7 +488,7 @@ class _PurchaseDetailsScreenState extends State<PurchaseDetailsScreen> {
           ),
         ),
         Text(
-          '\$${value.toStringAsFixed(2)}',
+          'Rs ${value.toStringAsFixed(2)}',
           style: TextStyle(
             fontSize: large ? 20 : 16,
             fontWeight: bold ? FontWeight.bold : FontWeight.w600,
@@ -414,6 +496,34 @@ class _PurchaseDetailsScreenState extends State<PurchaseDetailsScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  // ✅ NEW: View Receipt button
+  Widget _buildViewReceiptButton() {
+    return SizedBox(
+      width: double.infinity,
+      height: 50,
+      child: ElevatedButton.icon(
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => ReceiptScreen(saleId: widget.saleId),
+            ),
+          );
+        },
+        icon: const Icon(Icons.receipt_long),
+        label: Text(isReturn ? 'View Return Receipt' : 'View Receipt'),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: isReturn ? Colors.red : const Color(0xffFE691E),
+          foregroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          elevation: 2,
+        ),
+      ),
     );
   }
 

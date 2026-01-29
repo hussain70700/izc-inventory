@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:izc_inventory/dashboard/receipt_page.dart';
-import 'package:izc_inventory/services/sms_service.dart';
 import '../models/cart_item_model.dart';
 import '../models/customer_model.dart';
 import '../models/product_model.dart';
@@ -45,7 +44,10 @@ class _SalesScreenState extends State<SalesScreen> {
   double get tax => (subtotal - discount) * 0.085;
   double get total => subtotal - discount + tax;
   double get remainingAmount => total - _advancePayment;
-  String? _originalSaleIdForExchange; // ✅ Track which invoice is being exchanged
+  String? _originalSaleIdForExchange; // ✅ Track which invoice is being exchanged// ✅ You already have this
+  bool _isReturnMode = false;        // ✅ ADD THIS
+  bool _isExchangeMode = false;
+  List<String> _originalReturnProductIds = [];
   @override
   void dispose() {
     _searchController.dispose();
@@ -83,17 +85,33 @@ class _SalesScreenState extends State<SalesScreen> {
 
   // Add product to cart
   void _addToCart(Product product) {
+    // ✅ NEW: Check if in return mode and product wasn't in original sale
+    if (_isReturnMode && _originalReturnProductIds.isNotEmpty) {
+      if (!_originalReturnProductIds.contains(product.id)) {
+        _showError('Cannot add "${product.name}" - it was not in the original sale');
+        return;
+      }
+    }
+
     setState(() {
       final existingIndex = cart.indexWhere((item) => item.productId == product.id);
 
       if (existingIndex != -1) {
-        if (cart[existingIndex].qty < product.stock) {
+        if (_isReturnMode) {
+          // In return mode, check against original quantity
+          // You might want to store original quantities too for more precise validation
+          cart[existingIndex].qty++;
+        } else if (cart[existingIndex].qty < product.stock) {
           cart[existingIndex].qty++;
         } else {
           _showError('Cannot add more. Available stock: ${product.stock}');
         }
       } else {
-        if (product.stock > 0) {
+        if (_isReturnMode) {
+          // In return mode, this product should already be in cart from the original sale
+          _showError('Cannot add "${product.name}" - it was not in the original sale');
+          return;
+        } else if (product.stock > 0) {
           cart.add(CartItem(
             productId: product.id,
             name: product.name,
@@ -149,8 +167,12 @@ class _SalesScreenState extends State<SalesScreen> {
       _customerPhoneController.clear();
       _promoCodeController.clear();
       _appliedPromo = null;
+      _isReturnMode = false;
+      _isExchangeMode = false;
+      _originalReturnProductIds.clear();  // ✅ NEW: Clear validation list
     });
   }
+
 
   // Validate and apply promo code
   Future<void> _applyPromoCode() async {
@@ -209,7 +231,7 @@ class _SalesScreenState extends State<SalesScreen> {
       if (inputAmount > total) {
         _advancePayment = total;
         _advancePaymentController.text = total.toStringAsFixed(2);
-        _showError('Advance payment cannot exceed total amount of \$${total.toStringAsFixed(2)}');
+        _showError('Advance payment cannot exceed total amount of Rs ${total.toStringAsFixed(2)}');
       } else {
         _advancePayment = inputAmount;
       }
@@ -222,8 +244,10 @@ class _SalesScreenState extends State<SalesScreen> {
     required double total,
     String? paymentMethod,
     double? codAmount,
-    List<CartItem>? items,  // ✅ Add cart items parameter
-    double? advancePayment,  // ✅ Add advance payment parameter
+    List<CartItem>? items,
+    double? advancePayment,
+    bool isReturn = false,        // ✅ NEW: Flag for return
+    bool isExchange = false,      // ✅ NEW: Flag for exchange
   })
   async {
     try {
@@ -231,11 +255,8 @@ class _SalesScreenState extends State<SalesScreen> {
       String cleanPhone = phoneNumber.replaceAll(RegExp(r'[^\d+]'), '');
 
       // If phone doesn't start with +, add country code
-      // Adjust this based on your region (e.g., +92 for Pakistan)
       if (!cleanPhone.startsWith('+')) {
-        // Remove leading zeros if present
         cleanPhone = cleanPhone.replaceFirst(RegExp(r'^0+'), '');
-        // Add Pakistan country code (change this to your country code)
         cleanPhone = '+92$cleanPhone';
       }
 
@@ -252,24 +273,51 @@ class _SalesScreenState extends State<SalesScreen> {
       if (items != null && items.isNotEmpty) {
         itemsList = '\n\nItems:\n';
         for (var item in items) {
-          itemsList += '- ${item.name} x${item.qty} @ \$${item.price.toStringAsFixed(2)} = \$${(item.price * item.qty).toStringAsFixed(2)}';
+          itemsList += '- ${item.name} \n ${item.qty} X Rs ${item.price.toStringAsFixed(2)} = Rs ${(item.price * item.qty).toStringAsFixed(2)}\n';
         }
       }
 
       // Build advance payment line (only if advance was made)
       String advanceLine = '';
-      if (advancePayment != null && advancePayment > 0) {
-        advanceLine = '\n*Advance Paid:* \$${advancePayment.toStringAsFixed(2)}';
+      if (advancePayment != null && advancePayment > 0 && !isReturn) {
+        advanceLine = '\n*Advance Paid:* Rs ${advancePayment.toStringAsFixed(2)}';
       }
 
       // Build COD line (only if there's a remaining COD amount)
       String codLine = '';
-      if (codAmount != null && codAmount > 0) {
-        codLine = '\n*COD Amount:* \$${codAmount.toStringAsFixed(2)}';
+      if (codAmount != null && codAmount > 0 && !isReturn) {
+        codLine = '\n*COD Amount:* Rs ${codAmount.toStringAsFixed(2)}';
       }
 
-      // Format the message
-      final message = '''*Izzahs collection*\n *Sale Receipt*
+      // ✅ NEW: Format message based on type
+      String message;
+
+      if (isReturn) {
+        // RETURN MESSAGE FORMAT
+        message = '''*Izzahs collection*
+ *RETURN / CREDIT NOTE*
+
+*Invoice:* $invoiceId$itemsList
+----------------------------------------------
+*Refund Amount:* Rs ${total.abs().toStringAsFixed(2)}
+
+Items returned and stock restored.
+For any queries, please contact us.''';
+      } else if (isExchange) {
+        // EXCHANGE MESSAGE FORMAT
+        message = '''*Izzahs collection*
+ *EXCHANGE RECEIPT*
+
+*Invoice:* $invoiceId$itemsList
+----------------------------------------------
+*New Total:* Rs ${total.toStringAsFixed(2)}
+*Payment Method:* ${paymentMethod ?? 'N/A'}$advanceLine$codLine
+
+Thank you for shopping with us!''';
+      } else {
+        // NORMAL SALE MESSAGE FORMAT
+        message = '''*Izzahs collection*
+*Sale Receipt*
 
 *Invoice:* $invoiceId$itemsList
 ----------------------------------------------
@@ -277,6 +325,7 @@ class _SalesScreenState extends State<SalesScreen> {
 *Payment Method:* ${paymentMethod ?? 'N/A'}$advanceLine$codLine
 
 Thank you for your purchase!''';
+      }
 
       // Create WhatsApp URL
       final encodedMessage = Uri.encodeComponent(message);
@@ -284,6 +333,7 @@ Thank you for your purchase!''';
 
       print('📱 Attempting to open WhatsApp...');
       print('📱 Phone: $cleanPhone');
+      print('📱 Type: ${isReturn ? "RETURN" : isExchange ? "EXCHANGE" : "SALE"}');
       print('📱 Message: $message');
 
       // Try to launch WhatsApp
@@ -313,6 +363,7 @@ Thank you for your purchase!''';
   }
 
 
+
   // Process sale
   // Process sale
   Future<void> _processSale() async {
@@ -333,7 +384,7 @@ Thank you for your purchase!''';
 
     // Validate advance payment for COD
     if (_selectedPaymentMethod == 'COD' && _advancePayment > total) {
-      _showError('Advance payment (\$${_advancePayment.toStringAsFixed(2)}) cannot exceed total amount (\$${total.toStringAsFixed(2)})');
+      _showError('Advance payment (Rs ${_advancePayment.toStringAsFixed(2)}) cannot exceed total amount (Rs ${total.toStringAsFixed(2)})');
       return;
     }
 
@@ -358,12 +409,12 @@ Thank you for your purchase!''';
           children: [
             Text('Customer: ${_selectedCustomer!.name}'),
             Text('Phone: ${_selectedCustomer!.phone}'),
-            Text('Total Amount: \$${total.toStringAsFixed(2)}'),
+            Text('Total Amount: Rs ${total.toStringAsFixed(2)}'),
             if (_selectedPaymentMethod == 'COD' && _advancePayment > 0)
-              Text('Advance Payment: \$${_advancePayment.toStringAsFixed(2)}'),
+              Text('Advance Payment: Rs ${_advancePayment.toStringAsFixed(2)}'),
             if (_selectedPaymentMethod == 'COD')
               Text(
-                'COD Amount: \$${remainingAmount.toStringAsFixed(2)}',
+                'COD Amount: Rs ${remainingAmount.toStringAsFixed(2)}',
                 style: const TextStyle(
                   color: Color(0xffFE691E),
                   fontWeight: FontWeight.bold,
@@ -579,7 +630,7 @@ Thank you for your purchase!''';
       // Get the sale
       final sale = await _supabaseService.getSaleById(result['invoiceId']);
       setState(() {
-        _originalSaleIdForExchange = result['invoiceId']; // ✅ Store the original invoice ID
+        _originalSaleIdForExchange = result['invoiceId'];
       });
       final items = await _supabaseService.getDetailedSaleItems(result['invoiceId']);
 
@@ -603,12 +654,12 @@ Thank you for your purchase!''';
               children: [
                 Text('Invoice: ${result['invoiceId']}'),
                 Text('Customer: ${items.first.customerName ?? "N/A"}'),
-                Text('Original Total: \$${sale.total.toStringAsFixed(2)}'),
+                Text('Original Total: Rs ${sale.total.toStringAsFixed(2)}'),
                 const SizedBox(height: 16),
                 const Text('Items in sale:', style: TextStyle(fontWeight: FontWeight.bold)),
                 ...items.map((item) => Padding(
                   padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Text('• ${item.productName} x${item.quantity} - \$${item.total.toStringAsFixed(2)}'),
+                  child: Text('• ${item.productName} x${item.quantity} - Rs ${item.total.toStringAsFixed(2)}'),
                 )),
                 const SizedBox(height: 16),
                 Container(
@@ -619,7 +670,7 @@ Thank you for your purchase!''';
                     border: Border.all(color: Colors.red.shade200),
                   ),
                   child: const Text(
-                    'ℹ️ Items will be added to cart. Adjust quantities for partial return, then click "Process Return" button below.',
+                    'ℹ️ Items will be added to cart. Adjust quantities for partial return, then click "Process Return" button below. You cannot add items that were not in the original sale.',
                     style: TextStyle(fontSize: 12),
                   ),
                 ),
@@ -645,13 +696,19 @@ Thank you for your purchase!''';
 
       if (proceed != true) return;
 
-      // Set the customer from the original sale
+      final actualCustomer = await _supabaseService.getCustomerById(sale.customerId);
+
       setState(() {
         _selectedCustomer = Customer(
           id: sale.customerId,
-          name: items.first.customerName ?? "Unknown",
-          phone:  "Return Customer",
+          name: actualCustomer?.name ?? items.first.customerName ?? "Unknown",
+          phone: actualCustomer?.phone ?? "0000000000",
         );
+        _isReturnMode = true;
+        _isExchangeMode = false;
+
+        // ✅ NEW: Store original product IDs for validation
+        _originalReturnProductIds = items.map((item) => item.productId).toList();
       });
 
       // Add items to cart
@@ -686,7 +743,7 @@ Thank you for your purchase!''';
       }
 
       _showSuccess(
-        'Return mode activated! Items added to cart. Reduce quantities for partial return, then click "Process Return" button.',
+        'Return mode activated! Items added to cart. Reduce quantities for partial return, then click "Process Return" button. You cannot add new items.',
       );
 
     } catch (e) {
@@ -789,9 +846,12 @@ Thank you for your purchase!''';
         ),
       );
 
+      // ✅ STORE THE ORIGINAL SALE ID FIRST - BEFORE ANY OTHER OPERATIONS
+      final originalSaleId = result['invoiceId'];
+
       // Get the sale
-      final sale = await _supabaseService.getSaleById(result['invoiceId']);
-      final items = await _supabaseService.getDetailedSaleItems(result['invoiceId']);
+      final sale = await _supabaseService.getSaleById(originalSaleId);
+      final items = await _supabaseService.getDetailedSaleItems(originalSaleId);
 
       Navigator.pop(context); // Close loading
 
@@ -811,9 +871,9 @@ Thank you for your purchase!''';
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Original Invoice: ${result['invoiceId']}'),
+                Text('Original Invoice: $originalSaleId'),
                 Text('Customer: ${items.first.customerName ?? "N/A"}'),
-                Text('Original Total: \$${sale.total.toStringAsFixed(2)}'),
+                Text('Original Total: Rs ${sale.total.toStringAsFixed(2)}'),
                 const SizedBox(height: 16),
                 const Text('Original items:', style: TextStyle(fontWeight: FontWeight.bold)),
                 ...items.map((item) => Padding(
@@ -855,20 +915,52 @@ Thank you for your purchase!''';
 
       if (proceed != true) return;
 
-      // Set the customer from the original sale
+      final actualCustomer = await _supabaseService.getCustomerById(sale.customerId);
+
       setState(() {
+        // ✅ SET THE ORIGINAL SALE ID HERE - THIS WAS MISSING!
+        _originalSaleIdForExchange = originalSaleId;
+
         _selectedCustomer = Customer(
           id: sale.customerId,
-          name: items.first.customerName ?? "Unknown",
-          phone: items.first.customerName ?? "Exchange Customer",
+          name: actualCustomer?.name ?? items.first.customerName ?? "Unknown",
+          phone: actualCustomer?.phone ?? "0000000000",
         );
+        _isReturnMode = false;
+        _isExchangeMode = true;
       });
 
-      // Add items to cart
+      // ✅ FIXED: Add items to cart with better error handling
       for (var item in items) {
-        // Get fresh product data to check current stock
-        final products = await _supabaseService.searchProducts(item.sku);
-        if (products.isNotEmpty) {
+        try {
+          // Try to get fresh product data by searching first
+          List<Product> products = await _supabaseService.searchProducts(item.sku);
+
+          // If not found by SKU search, try to get product by ID directly
+          if (products.isEmpty) {
+            final directProduct = await _supabaseService.getProductById(item.productId);
+            if (directProduct != null) {
+              products = [directProduct];
+            }
+          }
+
+          if (products.isEmpty) {
+            // Product not found at all - still add it to cart but with warning
+            _showError('Warning: ${item.productName} not found in inventory. Adding with original price.');
+
+            setState(() {
+              cart.add(CartItem(
+                productId: item.productId,
+                name: item.productName,
+                sku: item.sku,
+                price: item.price,
+                qty: item.quantity,
+                availableStock: 0, // No stock info available
+              ));
+            });
+            continue;
+          }
+
           final product = products.first;
 
           // Check if item already in cart
@@ -877,16 +969,20 @@ Thank you for your purchase!''';
           if (existingIndex != -1) {
             // Update quantity if already in cart
             final newQty = cart[existingIndex].qty + item.quantity;
-            if (newQty <= product.stock) {
+            if (newQty <= product.stock || !product.isActive) {
               setState(() {
                 cart[existingIndex].qty = newQty;
               });
             } else {
               _showError('${product.name}: Cannot add ${item.quantity} more. Available stock: ${product.stock}');
+              // Still add what we can
+              setState(() {
+                cart[existingIndex].qty = product.stock;
+              });
             }
           } else {
             // Add new item to cart
-            if (item.quantity <= product.stock) {
+            if (item.quantity <= product.stock || !product.isActive) {
               setState(() {
                 cart.add(CartItem(
                   productId: product.id,
@@ -899,13 +995,29 @@ Thank you for your purchase!''';
               });
             } else {
               _showError('${product.name}: Requested ${item.quantity} but only ${product.stock} in stock');
+              // Add what's available
+              if (product.stock > 0) {
+                setState(() {
+                  cart.add(CartItem(
+                    productId: product.id,
+                    name: product.name,
+                    sku: product.sku,
+                    price: product.price,
+                    qty: product.stock,
+                    availableStock: product.stock,
+                  ));
+                });
+              }
             }
           }
+        } catch (e) {
+          _showError('Error loading ${item.productName}: $e');
         }
       }
 
-      // Mark original sale as exchanged
-      await _supabaseService.processExchange(result['invoiceId']);
+      // ✅ DON'T CALL processExchange() HERE - it should only be called when completing the exchange
+      // Remove this line:
+      // await _supabaseService.processExchange(result['invoiceId']);
 
       _showSuccess(
         'Exchange mode activated! Original items added to cart. Adjust quantities or add new items, then complete the sale.',
@@ -981,7 +1093,7 @@ Thank you for your purchase!''';
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'Refund Amount: \$${returnTotal.toStringAsFixed(2)}',
+                    'Refund Amount: Rs ${returnTotal.toStringAsFixed(2)}',
                     style: const TextStyle(
                       color: Colors.red,
                       fontSize: 12,
@@ -1013,43 +1125,56 @@ Thank you for your purchase!''';
     if (confirmed != true) return;
 
     try {
-      // Create NEGATIVE sale (credit note) for the return
-      final returnSaleId = await _supabaseService.createSale(
-        customerId: _selectedCustomer!.id!,
-        items: cart,
-        subtotal: -returnSubtotal, // ✅ NEGATIVE values
-        discount: 0.0,
-        tax: -returnTax,
-        total: -returnTotal,
-        paymentMethod: 'Return', // ✅ Mark as return
-        status: 'Returned',
-        notes: 'Return - Credit Note',
+      // Show loading
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(color: Color(0xffFE691E)),
+        ),
       );
 
-      // Restore stock for each item
-      for (var item in cart) {
-        final product = await _supabaseService.searchProducts(item.sku);
-        if (product.isNotEmpty) {
-          final currentProduct = product.first;
-          final newStock = currentProduct.stock + item.qty;
+      // ✅ FIX: Create return record with POSITIVE quantities but NEGATIVE totals
+      final returnSaleId = await _supabaseService.createReturnRecord(
+        customerId: _selectedCustomer!.id!,
+        items: cart,
+        subtotal: -returnSubtotal,  // Negative
+        discount: 0.0,
+        tax: -returnTax,  // Negative
+        total: -returnTotal,  // Negative
+        notes: 'RETURN - Credit Note${_originalSaleIdForExchange != null ? " (Original: $_originalSaleIdForExchange)" : ""}',
+      );
 
-          await _supabaseService.updateProductStock(
-            currentProduct.id,
-            newStock,
-            'Return - Credit Note',
-          );
-        }
+      // Close loading
+      if (mounted && Navigator.canPop(context)) {
+        Navigator.pop(context);
       }
 
       _showSuccess('Return processed! Credit note generated and stock restored.');
 
+      // Store values before clearing cart
+      final customerPhone = _selectedCustomer!.phone;
+      final cartItemsCopy = List<CartItem>.from(cart);
+
       setState(() {
         cart.clear();
         _clearCustomerSelection();
+        _originalSaleIdForExchange = null;
+        _isReturnMode = false;
+        _originalReturnProductIds.clear();  // ✅ NEW: Clear validation list
       });
 
-      // Navigate to receipt for the return/credit note
-      if (returnSaleId != null) {
+      // Send WhatsApp message for return
+      if (returnSaleId != null && mounted) {
+        await _sendWhatsAppMessage(
+          phoneNumber: customerPhone,
+          invoiceId: returnSaleId,
+          total: returnTotal,
+          items: cartItemsCopy,
+          isReturn: true,
+        );
+
+        // Navigate to receipt for the return/credit note
         Navigator.push(
           context,
           MaterialPageRoute(
@@ -1059,6 +1184,10 @@ Thank you for your purchase!''';
       }
 
     } catch (e) {
+      // Close loading if still open
+      if (mounted && Navigator.canPop(context)) {
+        Navigator.pop(context);
+      }
       _showError('Failed to process return: $e');
     }
   }
@@ -1076,8 +1205,6 @@ Thank you for your purchase!''';
       return;
     }
 
-    // Get the original sale ID (stored when exchange was initiated)
-    // You'll need to add a state variable to track this
     if (_originalSaleIdForExchange == null) {
       _showError('Original sale ID not found');
       return;
@@ -1094,7 +1221,7 @@ Thank you for your purchase!''';
           children: [
             Text('Original Invoice: $_originalSaleIdForExchange'),
             Text('Customer: ${_selectedCustomer!.name}'),
-            Text('New Total: \$${total.toStringAsFixed(2)}'),
+            Text('New Total: Rs ${total.toStringAsFixed(2)}'),
             const SizedBox(height: 8),
             const Text('New Items:', style: TextStyle(fontWeight: FontWeight.bold)),
             ...cart.map((item) => Text('• ${item.name} x${item.qty}')),
@@ -1191,27 +1318,60 @@ Thank you for your purchase!''';
 
       _showSuccess('Exchange completed! Invoice $_originalSaleIdForExchange updated.');
 
+      // ✅ NEW: Store values before clearing cart
+      final customerPhone = _selectedCustomer!.phone;
+      final paymentMethod = _selectedPaymentMethod!;
+      final exchangeTotal = total;
+      final codAmountToSend = _selectedPaymentMethod == 'COD' ? remainingAmount : null;
+      final cartItemsCopy = List<CartItem>.from(cart);
+      final advancePaymentAmount = _advancePayment > 0 ? _advancePayment : null;
+      final exchangeInvoiceId = _originalSaleIdForExchange!;
+
       setState(() {
         cart.clear();
         _clearCustomerSelection();
         _selectedPaymentMethod = null;
         _advancePaymentController.clear();
         _advancePayment = 0.0;
-        _originalSaleIdForExchange = null; // Clear the stored ID
+        _originalSaleIdForExchange = null;
+        _isExchangeMode = false;
       });
 
-      // Navigate to updated receipt
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => ReceiptScreen(saleId: _originalSaleIdForExchange!),
-        ),
-      );
+      // ✅ NEW: Send WhatsApp message for exchange
+      if (mounted) {
+        await _sendWhatsAppMessage(
+          phoneNumber: customerPhone,
+          invoiceId: exchangeInvoiceId,
+          total: exchangeTotal,
+          paymentMethod: paymentMethod,
+          codAmount: codAmountToSend,
+          items: cartItemsCopy,
+          advancePayment: advancePaymentAmount,
+          isExchange: true, // ✅ Flag as exchange
+        );
+
+        // Navigate to updated receipt
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ReceiptScreen(saleId: exchangeInvoiceId),
+          ),
+        );
+      }
 
     } catch (e) {
       _showError('Failed to process exchange: $e');
     }
   }
+
+
+
+
+
+
+
+
+
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
@@ -1579,7 +1739,7 @@ Thank you for your purchase!''';
                   ],
                 ),
               ),
-              Expanded(child: Text('\$${item.price.toStringAsFixed(2)}')),
+              Expanded(child: Text('Rs ${item.price.toStringAsFixed(2)}')),
               Expanded(
                 child: Row(
                   children: [
@@ -1613,7 +1773,7 @@ Thank you for your purchase!''';
               ),
               Expanded(
                 child: Text(
-                  '\$${(item.price * item.qty).toStringAsFixed(2)}',
+                  'Rs ${(item.price * item.qty).toStringAsFixed(2)}',
                   style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
               ),
@@ -1625,16 +1785,10 @@ Thank you for your purchase!''';
   }
 
   Widget _cartActions() {
-    // Check if we're in return mode (customer name contains "Return")
-    final isReturnMode = _selectedCustomer != null &&
-        _selectedCustomer!.phone.contains('Return Customer');
-    final isExchangeMode = _selectedCustomer != null &&
-        _selectedCustomer!.phone.contains('Exchange Customer');
-
     return Row(
       children: [
         // Show Process Return button when in return mode
-        if (isReturnMode)
+        if (_isReturnMode)
           Expanded(
             child: Container(
               decoration: BoxDecoration(
@@ -1655,7 +1809,7 @@ Thank you for your purchase!''';
           ),
 
         // Show Process Exchange button when in exchange mode
-        if (isExchangeMode)
+        if (_isExchangeMode)
           Expanded(
             child: Container(
               decoration: BoxDecoration(
@@ -1676,7 +1830,7 @@ Thank you for your purchase!''';
           ),
 
         // Normal buttons when not in return/exchange mode
-        if (!isReturnMode && !isExchangeMode) ...[
+        if (!_isReturnMode && !_isExchangeMode) ...[
           Container(
             decoration: BoxDecoration(
               color: Colors.white,
@@ -2024,7 +2178,7 @@ Thank you for your purchase!''';
                       onChanged: _updateAdvancePayment,
                       decoration: InputDecoration(
                         labelText: 'Enter advance amount',
-                        prefixText: '\$ ',
+                        prefixText: 'Rs  ',
                         border: OutlineInputBorder(
                           borderSide: BorderSide(
                             color: _advancePayment > total ? Colors.red : Colors.grey,
@@ -2044,7 +2198,7 @@ Thank you for your purchase!''';
                         filled: true,
                         fillColor: Colors.white,
                         isDense: true,
-                        helperText: 'Max: \$${total.toStringAsFixed(2)}',
+                        helperText: 'Max: Rs ${total.toStringAsFixed(2)}',
                         helperStyle: TextStyle(
                           fontSize: 11,
                           color: _advancePayment > total ? Colors.red : Colors.grey.shade600,
@@ -2069,7 +2223,7 @@ Thank you for your purchase!''';
                               style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
                             ),
                             Text(
-                              '\$${remainingAmount.toStringAsFixed(2)}',
+                              'Rs ${remainingAmount.toStringAsFixed(2)}',
                               style: const TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.bold,
@@ -2106,8 +2260,8 @@ Thank you for your purchase!''';
                   : _processSale,
               child: Text(
                 _selectedPaymentMethod == 'COD' && _advancePayment > 0
-                    ? 'Charge \$${_advancePayment.toStringAsFixed(2)} (COD: \$${remainingAmount.toStringAsFixed(2)})'
-                    : 'Charge \$${total.toStringAsFixed(2)}',
+                    ? 'Charge Rs ${_advancePayment.toStringAsFixed(2)} (COD: Rs ${remainingAmount.toStringAsFixed(2)})'
+                    : 'Charge Rs ${total.toStringAsFixed(2)}',
                 style: const TextStyle(color: Colors.white),
               ),
             ),
@@ -2124,7 +2278,7 @@ Thank you for your purchase!''';
         children: [
           Expanded(child: Text(label, style: TextStyle(color: color))),
           Text(
-            '\$${value.toStringAsFixed(2)}',
+            'Rs ${value.toStringAsFixed(2)}',
             style: TextStyle(
               fontWeight: bold ? FontWeight.bold : null,
               color: color,

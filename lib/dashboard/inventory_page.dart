@@ -1337,7 +1337,7 @@ class _InventoryPageState extends State<InventoryPage> {
             const SizedBox(width: 8),
             Expanded(
                 child: _buildStatCard("Total Value",
-                    "\$${_totalValue.toStringAsFixed(2)}", Icons.attach_money, Colors.green)),
+                    "Rs ${_totalValue.toStringAsFixed(2)}", Icons.attach_money, Colors.green)),
           ],
         ),
         const SizedBox(height: 8),
@@ -1361,7 +1361,7 @@ class _InventoryPageState extends State<InventoryPage> {
                 Icons.inventory, Colors.blue)),
         const SizedBox(width: 12),
         Expanded(
-            child: _buildStatCard("Total Value", '\$${_totalValue.toStringAsFixed(2)}',
+            child: _buildStatCard("Total Value", 'Rs ${_totalValue.toStringAsFixed(2)}',
                 Icons.attach_money, Colors.green)),
         const SizedBox(width: 12),
         Expanded(

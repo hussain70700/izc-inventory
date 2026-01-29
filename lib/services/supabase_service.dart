@@ -798,7 +798,7 @@ class SupabaseService {
 
       // ✅ VALIDATION: Ensure advance payment doesn't exceed total
       if (advancePayment != null && advancePayment > total) {
-        throw Exception('Advance payment (\$${advancePayment.toStringAsFixed(2)}) cannot exceed total (\$${total.toStringAsFixed(2)})');
+        throw Exception('Advance payment (Rs ${advancePayment.toStringAsFixed(2)}) cannot exceed total (Rs ${total.toStringAsFixed(2)})');
       }
 
       // ✅ FIX: Store the ACTUAL total in database, not the remaining amount!
@@ -821,9 +821,9 @@ class SupabaseService {
         }
       }
 
-      print('Actual Total: \$${total.toStringAsFixed(2)}');
-      print('Advance Payment: \$${actualAdvancePayment.toStringAsFixed(2)}');
-      print('Remaining COD Amount: \$${(total - actualAdvancePayment).toStringAsFixed(2)}');
+      print('Actual Total: Rs ${total.toStringAsFixed(2)}');
+      print('Advance Payment: Rs ${actualAdvancePayment.toStringAsFixed(2)}');
+      print('Remaining COD Amount: Rs ${(total - actualAdvancePayment).toStringAsFixed(2)}');
       print('Status: $finalStatus');
 
       // ✅ Insert sale - now storing the CORRECT total
@@ -903,7 +903,7 @@ class SupabaseService {
 
       print('✅ Sale completed successfully with status: $finalStatus!');
       if (paymentMethod == 'COD' && actualAdvancePayment > 0) {
-        print('COD Sale - Advance: \$${actualAdvancePayment.toStringAsFixed(2)}, Remaining: \$${(total - actualAdvancePayment).toStringAsFixed(2)}');
+        print('COD Sale - Advance: Rs ${actualAdvancePayment.toStringAsFixed(2)}, Remaining: Rs ${(total - actualAdvancePayment).toStringAsFixed(2)}');
       }
 
       // Refresh data after sale
@@ -916,6 +916,160 @@ class SupabaseService {
       throw Exception('Failed to create sale: ${e.toString()}');
     }
   }
+  /// Create a return record without affecting inventory
+  /// This is used when stock has already been manually restored
+  // ============================================
+// FINAL CORRECTED VERSION OF createReturnRecord
+// Replace this in your supabase_service.dart
+// ============================================
+// ============================================
+// ADD THIS METHOD TO YOUR SupabaseService class
+// Location: Around line 450, after searchProducts method
+// ============================================
+
+  /// Get product by ID
+  /// Used in exchange functionality when products aren't found by SKU search
+  Future<Product?> getProductById(String productId) async {
+    try {
+      print('🔍 Fetching product by ID: $productId');
+
+      final response = await _supabase
+          .from('products')
+          .select()
+          .eq('id', productId)
+          .maybeSingle();
+
+      if (response == null) {
+        print('⚠️ Product not found with ID: $productId');
+        return null;
+      }
+
+      print('✅ Product found: ${response['name']}');
+      return Product.fromJson(response);
+    } catch (e) {
+      print('❌ Error fetching product by ID: $e');
+      return null;
+    }
+  }
+
+// ============================================
+// INSTRUCTIONS:
+// 1. Open your lib/services/supabase_service.dart file
+// 2. Find the searchProducts method (around line 450)
+// 3. Add the getProductById method right after it
+// 4. Save the file
+// ============================================
+  /// Create a return record with positive quantities and negative totals
+  /// Stock is automatically restored for each returned item
+  Future<String?> createReturnRecord({
+    required String customerId,
+    required List<CartItem> items,
+    required double subtotal,
+    required double discount,
+    required double tax,
+    required double total,
+    String? notes,
+  }) async {
+    try {
+      print('Creating return record for customer: $customerId');
+      print('Items count: ${items.length}');
+
+      // 1. Create the sale record with NEGATIVE totals
+      final saleData = {
+        'customer_id': customerId,
+        'sale_date': DateTime.now().toIso8601String(),
+        'subtotal': subtotal,  // Negative (e.g., -100.00)
+        'discount': discount,  // Usually 0 for returns
+        'tax': tax,  // Negative (e.g., -8.50)
+        'total': total,  // Negative (e.g., -108.50)
+        'payment_method': 'RETURN',
+        'status': 'Returned',
+        'notes': notes ?? 'Return - Stock Restored',
+      };
+
+      final saleResponse = await _supabase
+          .from('sales')
+          .insert(saleData)
+          .select('id')
+          .single();
+
+      final saleId = saleResponse['id'] as String;
+      print('Return record created with ID: $saleId');
+
+      // 2. Generate invoice number (no underscore, no await)
+      final invoiceNumber = generateInvoiceNumber(saleId);
+      print('Generated Invoice Number: $invoiceNumber');
+
+      // 2.5. Update the sale record with invoice number
+      await _supabase
+          .from('sales')
+          .update({'invoice_number': invoiceNumber})
+          .eq('id', saleId);
+
+      // 3. Process each returned item
+      for (var item in items) {
+        print('Processing return item: ${item.name} x ${item.qty}');
+
+        // 3a. Insert sale_item with POSITIVE quantity
+        // (This satisfies the database constraint)
+        final itemData = {
+          'sale_id': saleId,
+          'product_id': item.productId,
+          'quantity': item.qty,  // ✅ POSITIVE quantity (e.g., 1, 2, 3)
+          'price': item.price,
+          'total': item.price * item.qty,  // ✅ POSITIVE total (e.g., 50.00)
+        };
+
+        await _supabase.from('sale_items').insert(itemData);
+
+        // 3b. Get current product stock and name
+        final productResponse = await _supabase
+            .from('products')
+            .select('stock, name')
+            .eq('id', item.productId)
+            .single();
+
+        final currentStock = productResponse['stock'] as int;
+        final productName = productResponse['name'] as String;  // ✅ Get product name
+        final newStock = currentStock + item.qty;
+
+        print('Restoring stock for $productName: $currentStock -> $newStock');
+
+        // 3c. Update product stock
+        await _supabase
+            .from('products')
+            .update({'stock': newStock})
+            .eq('id', item.productId);
+
+        // 3d. Record in stock history
+        // ✅ FIX: Include product_name field
+        await _supabase.from('stock_history').insert({
+          'product_id': item.productId,
+          'product_name': productName,  // ✅ REQUIRED FIELD
+          'old_stock': currentStock,
+          'new_stock': newStock,
+          'change_amount': item.qty,
+          'reason': 'Return - Credit Note $invoiceNumber',
+          'is_restock': true,
+        });
+      }
+
+      print('✅ Return completed successfully!');
+      print('Invoice: $invoiceNumber');
+      print('Items returned: ${items.length}');
+
+      // Refresh local data
+      await fetchProducts();
+      await fetchStockHistory();
+
+      return saleId;
+
+    } catch (e) {
+      print('❌ Error creating return record: $e');
+      rethrow;
+    }
+  }
+
   // Delete all sale items for a sale
   Future<void> deleteSaleItems(String saleId) async {
     try {
@@ -927,7 +1081,28 @@ class SupabaseService {
       throw Exception('Failed to delete sale items: $e');
     }
   }
+  Future<Customer?> getCustomerById(String customerId) async {
+    try {
+      final response = await _supabase
+          .from('customers')
+          .select()
+          .eq('id', customerId)
+          .maybeSingle(); // ✅ Changed this line
 
+      if (response == null) {
+        return null;
+      }
+
+      return Customer(
+        id: response['id'],
+        name: response['name'],
+        phone: response['phone'],
+      );
+    } catch (e) {
+      print('Error fetching customer: $e');
+      return null;
+    }
+  }
 // Update sale details
   Future<void> updateSale({
     required String saleId,
